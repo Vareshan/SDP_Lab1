@@ -30,6 +30,8 @@ import {
   useState,
 } from "react";
 
+import UsernameForm from "./components/UsernameForm";
+
 type Theme = "light" | "dark";
 type TaskStatus = "todo" | "progress" | "done";
 type TaskPriority = "Low" | "Medium" | "High";
@@ -327,10 +329,57 @@ export default function Home() {
   const [currentDateISO, setCurrentDateISO] = useState("");
   const [greeting, setGreeting] = useState("Good day");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [username, setUsername] = useState<string | null>(null);
+  const [isCheckingUser, setIsCheckingUser] = useState(true);
 
   const [draftTask, setDraftTask] = useState<DraftTask>(
     createEmptyTask(),
   );
+
+  useEffect(() => {
+  let isMounted = true;
+
+  async function loadSavedUser() {
+    try {
+      const response = await fetch("/api/users", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = (await response.json()) as {
+        user: {
+          username: string;
+        } | null;
+      };
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (response.ok && data.user) {
+        setUsername(data.user.username);
+      } else {
+        setUsername(null);
+      }
+    } catch (error) {
+      console.error("Failed to load saved user:", error);
+
+      if (isMounted) {
+        setUsername(null);
+      }
+    } finally {
+      if (isMounted) {
+        setIsCheckingUser(false);
+      }
+    }
+  }
+
+  loadSavedUser();
+
+  return () => {
+    isMounted = false;
+  };
+}, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(
@@ -477,6 +526,24 @@ export default function Home() {
       }),
     );
   }
+
+  if (isCheckingUser) {
+  return (
+    <main>
+      <p role="status" aria-live="polite">
+        Loading your account...
+      </p>
+    </main>
+  );
+}
+
+if (!username) {
+  return (
+    <main>
+      <UsernameForm onUserSaved={setUsername} />
+    </main>
+  );
+}
 
   return (
     <main className="dashboard-shell" id="dashboard">
