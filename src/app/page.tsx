@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Archive,
   BarChart3,
   Bell,
   CalendarDays,
@@ -13,7 +14,6 @@ import {
   LayoutDashboard,
   ListTodo,
   Moon,
-  MoreHorizontal,
   Plus,
   Search,
   Settings,
@@ -31,6 +31,7 @@ import {
 import UsernameForm from "./components/UsernameForm";
 
 type Theme = "light" | "dark";
+type PageView = "dashboard" | "archive";
 type TaskStatus = "todo" | "progress" | "done";
 type TaskPriority = "Low" | "Medium" | "High";
 
@@ -42,6 +43,7 @@ type Task = {
   timeEstimate: string;
   priority: TaskPriority;
   status: TaskStatus;
+  archivedAt?: string | null;
 };
 
 type DraftTask = {
@@ -80,31 +82,31 @@ const navigationItems = [
     label: "Dashboard",
     href: "#dashboard",
     icon: LayoutDashboard,
-    active: true,
+    view: "dashboard" as PageView,
   },
   {
-    label: "My tasks",
-    href: "#tasks",
-    icon: ListTodo,
-    active: false,
+    label: "Archive",
+    href: "#archive",
+    icon: Archive,
+    view: "archive" as PageView,
   },
   {
     label: "Calendar",
     href: "#calendar",
     icon: CalendarDays,
-    active: false,
+    view: null,
   },
   {
     label: "Projects",
     href: "#projects",
     icon: FolderKanban,
-    active: false,
+    view: null,
   },
   {
     label: "Analytics",
     href: "#analytics",
     icon: BarChart3,
-    active: false,
+    view: null,
   },
 ];
 
@@ -126,6 +128,14 @@ function formatDate(date: string): string {
     day: "numeric",
     month: "short",
   }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatArchivedDate(date: string): string {
+  return new Intl.DateTimeFormat("en-ZA", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(date));
 }
 
 function createInitials(username: string): string {
@@ -165,14 +175,16 @@ function TaskStatusIcon({
   return <Circle size={18} aria-hidden="true" />;
 }
 
-function TaskCard({
+function ActiveTaskCard({
   task,
   username,
   onAdvance,
+  onArchive,
 }: {
   task: Task;
   username: string;
   onAdvance: (taskId: string) => Promise<void>;
+  onArchive: (taskId: string) => Promise<void>;
 }) {
   const actionLabel =
     task.status === "todo"
@@ -196,9 +208,13 @@ function TaskCard({
         <button
           className="icon-button task-menu-button"
           type="button"
-          aria-label={`Open options for ${task.title}`}
+          onClick={() => {
+            void onArchive(task.id);
+          }}
+          aria-label={`Archive ${task.title}`}
+          title="Archive task"
         >
-          <MoreHorizontal size={19} aria-hidden="true" />
+          <Archive size={18} aria-hidden="true" />
         </button>
       </header>
 
@@ -267,20 +283,111 @@ function TaskCard({
   );
 }
 
+function ArchivedTaskCard({
+  task,
+  username,
+}: {
+  task: Task;
+  username: string;
+}) {
+  const initials = createInitials(username);
+
+  return (
+    <article className="task-card">
+      <header className="task-card-header">
+        <figure
+          className={`task-status-icon status-${task.status}`}
+          aria-label={`Final status: ${task.status}`}
+        >
+          <TaskStatusIcon status={task.status} />
+        </figure>
+
+        <Archive size={18} aria-hidden="true" />
+      </header>
+
+      <h4>{task.title}</h4>
+
+      <p className="task-project">
+        <FolderKanban size={15} aria-hidden="true" />
+        {task.project}
+      </p>
+
+      <dl className="task-metadata">
+        <dt>
+          <CalendarDays size={15} aria-hidden="true" />
+          Due date
+        </dt>
+
+        <dd>
+          <time dateTime={task.dueDate}>
+            {formatDate(task.dueDate)}
+          </time>
+        </dd>
+
+        <dt>
+          <Clock size={15} aria-hidden="true" />
+          Estimate
+        </dt>
+
+        <dd>{task.timeEstimate}</dd>
+
+        <dt>
+          <Archive size={15} aria-hidden="true" />
+          Archived
+        </dt>
+
+        <dd>
+          {task.archivedAt
+            ? formatArchivedDate(task.archivedAt)
+            : "Archived"}
+        </dd>
+      </dl>
+
+      <footer className="task-card-footer">
+        <small
+          className={`priority-badge priority-${task.priority.toLowerCase()}`}
+        >
+          {task.priority} priority
+        </small>
+
+        <strong
+          className="avatar avatar-small"
+          aria-label={`Task belongs to ${username}`}
+          title={username}
+        >
+          {initials}
+        </strong>
+      </footer>
+    </article>
+  );
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
+  const [currentView, setCurrentView] =
+    useState<PageView>("dashboard");
+
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [archivedTasks, setArchivedTasks] = useState<
+    Task[]
+  >([]);
+
   const [isLoadingTasks, setIsLoadingTasks] =
     useState(true);
+  const [isLoadingArchive, setIsLoadingArchive] =
+    useState(false);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [currentDate, setCurrentDate] = useState("Today");
   const [currentDateISO, setCurrentDateISO] =
     useState("");
   const [greeting, setGreeting] = useState("Good day");
   const [isModalOpen, setIsModalOpen] = useState(false);
+
   const [username, setUsername] = useState<
     string | null
   >(null);
+
   const [isCheckingUser, setIsCheckingUser] =
     useState(true);
 
@@ -392,6 +499,68 @@ export default function Home() {
   }, [isCheckingUser, username]);
 
   useEffect(() => {
+    if (
+      currentView !== "archive" ||
+      isCheckingUser ||
+      !username
+    ) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadArchivedTasks(): Promise<void> {
+      try {
+        setIsLoadingArchive(true);
+
+        const response = await fetch("/api/archive", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = (await response.json()) as {
+          tasks: Task[];
+          error?: string;
+        };
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (!response.ok) {
+          console.error(
+            data.error ??
+              "Failed to load archived tasks.",
+          );
+          setArchivedTasks([]);
+          return;
+        }
+
+        setArchivedTasks(data.tasks);
+      } catch (error) {
+        console.error(
+          "Failed to load archived tasks:",
+          error,
+        );
+
+        if (isMounted) {
+          setArchivedTasks([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingArchive(false);
+        }
+      }
+    }
+
+    void loadArchivedTasks();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentView, isCheckingUser, username]);
+
+  useEffect(() => {
     const savedTheme = localStorage.getItem(
       "task-tracker-theme",
     ) as Theme | null;
@@ -446,6 +615,22 @@ export default function Home() {
     });
   }, [searchTerm, tasks]);
 
+  const filteredArchivedTasks = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    if (!query) {
+      return archivedTasks;
+    }
+
+    return archivedTasks.filter((task) => {
+      return (
+        task.title.toLowerCase().includes(query) ||
+        task.project.toLowerCase().includes(query) ||
+        task.priority.toLowerCase().includes(query)
+      );
+    });
+  }, [archivedTasks, searchTerm]);
+
   const completedTasks = tasks.filter(
     (task) => task.status === "done",
   ).length;
@@ -472,10 +657,12 @@ export default function Home() {
       theme === "light" ? "dark" : "light";
 
     setTheme(newTheme);
+
     localStorage.setItem(
       "task-tracker-theme",
       newTheme,
     );
+
     document.documentElement.dataset.theme = newTheme;
   }
 
@@ -607,6 +794,55 @@ export default function Home() {
     }
   }
 
+  async function archiveTask(
+    taskId: string,
+  ): Promise<void> {
+    try {
+      const response = await fetch(
+        `/api/tasks/${taskId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "archive",
+          }),
+        },
+      );
+
+      const data = (await response.json()) as {
+        task?: Task;
+        error?: string;
+      };
+
+      if (!response.ok || !data.task) {
+        console.error(
+          data.error ??
+            "The task could not be archived.",
+        );
+        return;
+      }
+
+      const archivedTask = data.task;
+
+      setTasks((currentTasks) =>
+        currentTasks.filter(
+          (task) => task.id !== taskId,
+        ),
+      );
+
+      setArchivedTasks((currentTasks) => [
+        archivedTask,
+        ...currentTasks.filter(
+          (task) => task.id !== archivedTask.id,
+        ),
+      ]);
+    } catch (error) {
+      console.error("Failed to archive task:", error);
+    }
+  }
+
   if (isCheckingUser) {
     return (
       <main>
@@ -645,6 +881,10 @@ export default function Home() {
             className="brand"
             href="#dashboard"
             aria-label="TaskFlow dashboard"
+            onClick={(event) => {
+              event.preventDefault();
+              setCurrentView("dashboard");
+            }}
           >
             <figure className="brand-icon">
               <CheckCircle2
@@ -670,19 +910,27 @@ export default function Home() {
           <ul>
             {navigationItems.map((item) => {
               const NavigationIcon = item.icon;
+              const isActive =
+                item.view === currentView;
 
               return (
                 <li key={item.label}>
                   <a
                     className={`navigation-item ${
-                      item.active
+                      isActive
                         ? "navigation-item-active"
                         : ""
                     }`}
                     href={item.href}
                     aria-current={
-                      item.active ? "page" : undefined
+                      isActive ? "page" : undefined
                     }
+                    onClick={(event) => {
+                      if (item.view) {
+                        event.preventDefault();
+                        setCurrentView(item.view);
+                      }
+                    }}
                   >
                     <NavigationIcon
                       size={20}
@@ -734,7 +982,11 @@ export default function Home() {
 
               <input
                 type="search"
-                placeholder="Search tasks or projects"
+                placeholder={
+                  currentView === "dashboard"
+                    ? "Search tasks or projects"
+                    : "Search archived tasks"
+                }
                 value={searchTerm}
                 onChange={(event) =>
                   setSearchTerm(event.target.value)
@@ -774,260 +1026,379 @@ export default function Home() {
           </section>
         </header>
 
-        <section className="content-container">
-          <header className="welcome-section">
-            <section>
-              <p className="eyebrow">
-                Personal workspace
-              </p>
-
-              <h1>
-                {greeting}, {username}!
-              </h1>
-
-              <p>
-                Organise your work, manage your
-                deadlines and keep your projects
-                moving.
-              </p>
-            </section>
-
-            <button
-              className="primary-button"
-              type="button"
-              onClick={() => openTaskModal()}
-            >
-              <Plus size={19} aria-hidden="true" />
-              New task
-            </button>
-          </header>
-
-          <ul
-            className="stats-grid"
-            aria-label="Task statistics"
-          >
-            <li>
-              <article className="stat-card">
-                <header className="stat-card-heading">
-                  <figure className="stat-icon">
-                    <ListTodo
-                      size={20}
-                      aria-hidden="true"
-                    />
-                  </figure>
-
-                  <p>Total tasks</p>
-                </header>
-
-                <strong>{tasks.length}</strong>
-                <small>
-                  Across all your projects
-                </small>
-              </article>
-            </li>
-
-            <li>
-              <article className="stat-card">
-                <header className="stat-card-heading">
-                  <figure className="stat-icon stat-icon-progress">
-                    <CircleDashed
-                      size={20}
-                      aria-hidden="true"
-                    />
-                  </figure>
-
-                  <p>In progress</p>
-                </header>
-
-                <strong>{inProgressTasks}</strong>
-                <small>
-                  Tasks currently active
-                </small>
-              </article>
-            </li>
-
-            <li>
-              <article className="stat-card">
-                <header className="stat-card-heading">
-                  <figure className="stat-icon stat-icon-completed">
-                    <CheckCircle2
-                      size={20}
-                      aria-hidden="true"
-                    />
-                  </figure>
-
-                  <p>Completed</p>
-                </header>
-
-                <strong>{completedTasks}</strong>
-                <small>
-                  Tasks successfully finished
-                </small>
-              </article>
-            </li>
-
-            <li>
-              <article className="stat-card">
-                <header className="stat-card-heading">
-                  <figure className="stat-icon stat-icon-priority">
-                    <BarChart3
-                      size={20}
-                      aria-hidden="true"
-                    />
-                  </figure>
-
-                  <p>Overall progress</p>
-                </header>
-
-                <strong>
-                  {completionPercentage}%
-                </strong>
-
-                <small>
-                  {remainingHighPriorityTasks}{" "}
-                  high-priority tasks remaining
-                </small>
-
-                <progress
-                  value={completionPercentage}
-                  max="100"
-                  aria-label="Overall task completion"
-                >
-                  {completionPercentage}%
-                </progress>
-              </article>
-            </li>
-          </ul>
-
-          <section
-            className="board-section"
-            id="tasks"
-          >
-            <header className="board-header">
+        {currentView === "dashboard" ? (
+          <section className="content-container">
+            <header className="welcome-section">
               <section>
                 <p className="eyebrow">
-                  Task management
+                  Personal workspace
                 </p>
 
-                <h2>My task board</h2>
+                <h1>
+                  {greeting}, {username}!
+                </h1>
 
                 <p>
-                  Move tasks through each stage as you
-                  complete your work.
+                  Organise your work, manage your
+                  deadlines and keep your projects
+                  moving.
                 </p>
               </section>
 
-              <menu className="board-header-actions">
-                <li>
-                  <small>
-                    {filteredTasks.length} tasks shown
-                  </small>
-                </li>
-
-                <li>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => openTaskModal()}
-                  >
-                    <Plus
-                      size={18}
-                      aria-hidden="true"
-                    />
-                    Add task
-                  </button>
-                </li>
-              </menu>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => openTaskModal()}
+              >
+                <Plus size={19} aria-hidden="true" />
+                New task
+              </button>
             </header>
 
-            <section
-              className="kanban-board"
-              aria-label="Kanban task board"
+            <ul
+              className="stats-grid"
+              aria-label="Task statistics"
             >
-              {columns.map((column) => {
-                const columnTasks =
-                  filteredTasks.filter(
-                    (task) =>
-                      task.status === column.status,
-                  );
+              <li>
+                <article className="stat-card">
+                  <header className="stat-card-heading">
+                    <figure className="stat-icon">
+                      <ListTodo
+                        size={20}
+                        aria-hidden="true"
+                      />
+                    </figure>
 
-                return (
-                  <article
-                    className={`task-column column-${column.status}`}
-                    key={column.status}
+                    <p>Total tasks</p>
+                  </header>
+
+                  <strong>{tasks.length}</strong>
+                  <small>
+                    Across all your projects
+                  </small>
+                </article>
+              </li>
+
+              <li>
+                <article className="stat-card">
+                  <header className="stat-card-heading">
+                    <figure className="stat-icon stat-icon-progress">
+                      <CircleDashed
+                        size={20}
+                        aria-hidden="true"
+                      />
+                    </figure>
+
+                    <p>In progress</p>
+                  </header>
+
+                  <strong>{inProgressTasks}</strong>
+                  <small>
+                    Tasks currently active
+                  </small>
+                </article>
+              </li>
+
+              <li>
+                <article className="stat-card">
+                  <header className="stat-card-heading">
+                    <figure className="stat-icon stat-icon-completed">
+                      <CheckCircle2
+                        size={20}
+                        aria-hidden="true"
+                      />
+                    </figure>
+
+                    <p>Completed</p>
+                  </header>
+
+                  <strong>{completedTasks}</strong>
+                  <small>
+                    Tasks successfully finished
+                  </small>
+                </article>
+              </li>
+
+              <li>
+                <article className="stat-card">
+                  <header className="stat-card-heading">
+                    <figure className="stat-icon stat-icon-priority">
+                      <BarChart3
+                        size={20}
+                        aria-hidden="true"
+                      />
+                    </figure>
+
+                    <p>Overall progress</p>
+                  </header>
+
+                  <strong>
+                    {completionPercentage}%
+                  </strong>
+
+                  <small>
+                    {remainingHighPriorityTasks}{" "}
+                    high-priority tasks remaining
+                  </small>
+
+                  <progress
+                    value={completionPercentage}
+                    max="100"
+                    aria-label="Overall task completion"
                   >
-                    <header className="column-header">
-                      <section>
-                        <header className="column-title-row">
-                          <i
-                            className="column-status-dot"
+                    {completionPercentage}%
+                  </progress>
+                </article>
+              </li>
+            </ul>
+
+            <section
+              className="board-section"
+              id="tasks"
+            >
+              <header className="board-header">
+                <section>
+                  <p className="eyebrow">
+                    Task management
+                  </p>
+
+                  <h2>My task board</h2>
+
+                  <p>
+                    Move tasks through each stage as
+                    you complete your work.
+                  </p>
+                </section>
+
+                <menu className="board-header-actions">
+                  <li>
+                    <small>
+                      {filteredTasks.length} tasks shown
+                    </small>
+                  </li>
+
+                  <li>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => openTaskModal()}
+                    >
+                      <Plus
+                        size={18}
+                        aria-hidden="true"
+                      />
+                      Add task
+                    </button>
+                  </li>
+                </menu>
+              </header>
+
+              <section
+                className="kanban-board"
+                aria-label="Kanban task board"
+              >
+                {columns.map((column) => {
+                  const columnTasks =
+                    filteredTasks.filter(
+                      (task) =>
+                        task.status === column.status,
+                    );
+
+                  return (
+                    <article
+                      className={`task-column column-${column.status}`}
+                      key={column.status}
+                    >
+                      <header className="column-header">
+                        <section>
+                          <header className="column-title-row">
+                            <i
+                              className="column-status-dot"
+                              aria-hidden="true"
+                            />
+
+                            <h3>{column.title}</h3>
+
+                            <small className="column-count">
+                              {columnTasks.length}
+                            </small>
+                          </header>
+
+                          <p>{column.description}</p>
+                        </section>
+
+                        <button
+                          className="column-add-button"
+                          type="button"
+                          onClick={() =>
+                            openTaskModal(column.status)
+                          }
+                          aria-label={`Add task to ${column.title}`}
+                        >
+                          <Plus
+                            size={18}
+                            aria-hidden="true"
+                          />
+                        </button>
+                      </header>
+
+                      {columnTasks.length > 0 ? (
+                        <ol className="task-list">
+                          {columnTasks.map((task) => (
+                            <li key={task.id}>
+                              <ActiveTaskCard
+                                task={task}
+                                username={username}
+                                onAdvance={advanceTask}
+                                onArchive={archiveTask}
+                              />
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <article className="empty-column">
+                          <ListTodo
+                            size={24}
                             aria-hidden="true"
                           />
 
-                          <h3>{column.title}</h3>
+                          <p>No tasks found</p>
 
-                          <small className="column-count">
-                            {columnTasks.length}
-                          </small>
-                        </header>
-
-                        <p>{column.description}</p>
-                      </section>
-
-                      <button
-                        className="column-add-button"
-                        type="button"
-                        onClick={() =>
-                          openTaskModal(column.status)
-                        }
-                        aria-label={`Add task to ${column.title}`}
-                      >
-                        <Plus
-                          size={18}
-                          aria-hidden="true"
-                        />
-                      </button>
-                    </header>
-
-                    {columnTasks.length > 0 ? (
-                      <ol className="task-list">
-                        {columnTasks.map((task) => (
-                          <li key={task.id}>
-                            <TaskCard
-                              task={task}
-                              username={username}
-                              onAdvance={advanceTask}
-                            />
-                          </li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <article className="empty-column">
-                        <ListTodo
-                          size={24}
-                          aria-hidden="true"
-                        />
-
-                        <p>No tasks found</p>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openTaskModal(
-                              column.status,
-                            )
-                          }
-                        >
-                          Add a task
-                        </button>
-                      </article>
-                    )}
-                  </article>
-                );
-              })}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openTaskModal(
+                                column.status,
+                              )
+                            }
+                          >
+                            Add a task
+                          </button>
+                        </article>
+                      )}
+                    </article>
+                  );
+                })}
+              </section>
             </section>
           </section>
-        </section>
+        ) : (
+          <section
+            className="content-container"
+            id="archive"
+          >
+            <header className="welcome-section">
+              <section>
+                <p className="eyebrow">
+                  Task history
+                </p>
+
+                <h1>Archive</h1>
+
+                <p>
+                  Review tasks that are no longer part
+                  of your active task board.
+                </p>
+              </section>
+
+              <strong>
+                {filteredArchivedTasks.length} archived
+                tasks
+              </strong>
+            </header>
+
+            <section className="board-section">
+              <header className="board-header">
+                <section>
+                  <p className="eyebrow">
+                    Archived work
+                  </p>
+
+                  <h2>Archived tasks</h2>
+
+                  <p>
+                    Tasks are grouped according to
+                    their status when they were
+                    archived.
+                  </p>
+                </section>
+              </header>
+
+              {isLoadingArchive ? (
+                <p role="status" aria-live="polite">
+                  Loading archived tasks...
+                </p>
+              ) : (
+                <section
+                  className="kanban-board"
+                  aria-label="Archived task board"
+                >
+                  {columns.map((column) => {
+                    const columnTasks =
+                      filteredArchivedTasks.filter(
+                        (task) =>
+                          task.status === column.status,
+                      );
+
+                    return (
+                      <article
+                        className={`task-column column-${column.status}`}
+                        key={column.status}
+                      >
+                        <header className="column-header">
+                          <section>
+                            <header className="column-title-row">
+                              <i
+                                className="column-status-dot"
+                                aria-hidden="true"
+                              />
+
+                              <h3>{column.title}</h3>
+
+                              <small className="column-count">
+                                {columnTasks.length}
+                              </small>
+                            </header>
+
+                            <p>
+                              Archived {column.title.toLowerCase()}{" "}
+                              tasks
+                            </p>
+                          </section>
+                        </header>
+
+                        {columnTasks.length > 0 ? (
+                          <ol className="task-list">
+                            {columnTasks.map((task) => (
+                              <li key={task.id}>
+                                <ArchivedTaskCard
+                                  task={task}
+                                  username={username}
+                                />
+                              </li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <article className="empty-column">
+                            <Archive
+                              size={24}
+                              aria-hidden="true"
+                            />
+
+                            <p>
+                              No archived tasks in this
+                              section
+                            </p>
+                          </article>
+                        )}
+                      </article>
+                    );
+                  })}
+                </section>
+              )}
+            </section>
+          </section>
+        )}
       </section>
 
       {isModalOpen && (
