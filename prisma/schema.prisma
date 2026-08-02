@@ -35,7 +35,8 @@ enum TaskPriority {
 model Task {
   id           String       @id @default(cuid())
   title        String
-  project      String
+  description  String       @default("")
+  topic        String       @map("project")
   dueDate      String
   timeEstimate String
   priority     TaskPriority

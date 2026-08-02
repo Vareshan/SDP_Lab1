@@ -1,6 +1,30 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 
+const taskPriorities = ["Low", "Medium", "High"] as const;
+const taskStatuses = ["todo", "progress", "done"] as const;
+
+type TaskPriorityValue = (typeof taskPriorities)[number];
+type TaskStatusValue = (typeof taskStatuses)[number];
+
+function isTaskPriority(
+  value: unknown,
+): value is TaskPriorityValue {
+  return (
+    typeof value === "string" &&
+    taskPriorities.includes(value as TaskPriorityValue)
+  );
+}
+
+function isTaskStatus(
+  value: unknown,
+): value is TaskStatusValue {
+  return (
+    typeof value === "string" &&
+    taskStatuses.includes(value as TaskStatusValue)
+  );
+}
+
 export async function GET() {
   try {
     const user = await prisma.user.findFirst({
@@ -15,25 +39,25 @@ export async function GET() {
           tasks: [],
           error: "The local user has not been created.",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     const tasks = await prisma.task.findMany({
-  where: {
-    userId: user.id,
-    archivedAt: null,
-  },
-  orderBy: {
-    createdAt: "desc",
-  },
-});
+      where: {
+        userId: user.id,
+        archivedAt: null,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
     return NextResponse.json(
       {
         tasks,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Failed to retrieve tasks:", error);
@@ -41,31 +65,12 @@ export async function GET() {
     return NextResponse.json(
       {
         tasks: [],
-        error: "Something went wrong while retrieving the tasks.",
+        error:
+          "Something went wrong while retrieving the tasks.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
-}
-
-const taskPriorities = ["Low", "Medium", "High"] as const;
-const taskStatuses = ["todo", "progress", "done"] as const;
-
-type TaskPriorityValue = (typeof taskPriorities)[number];
-type TaskStatusValue = (typeof taskStatuses)[number];
-
-function isTaskPriority(value: unknown): value is TaskPriorityValue {
-  return (
-    typeof value === "string" &&
-    taskPriorities.includes(value as TaskPriorityValue)
-  );
-}
-
-function isTaskStatus(value: unknown): value is TaskStatusValue {
-  return (
-    typeof value === "string" &&
-    taskStatuses.includes(value as TaskStatusValue)
-  );
 }
 
 export async function POST(request: Request) {
@@ -81,13 +86,14 @@ export async function POST(request: Request) {
         {
           error: "The local user has not been created.",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     const body = (await request.json()) as {
       title?: unknown;
-      project?: unknown;
+      description?: unknown;
+      topic?: unknown;
       dueDate?: unknown;
       timeEstimate?: unknown;
       priority?: unknown;
@@ -102,19 +108,31 @@ export async function POST(request: Request) {
         {
           error: "A task title is required.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (
-      typeof body.project !== "string" ||
-      body.project.trim().length === 0
+      typeof body.description !== "string" ||
+      body.description.trim().length === 0
     ) {
       return NextResponse.json(
         {
-          error: "A project is required.",
+          error: "A task description is required.",
         },
-        { status: 400 }
+        { status: 400 },
+      );
+    }
+
+    if (
+      typeof body.topic !== "string" ||
+      body.topic.trim().length === 0
+    ) {
+      return NextResponse.json(
+        {
+          error: "A task topic is required.",
+        },
+        { status: 400 },
       );
     }
 
@@ -126,7 +144,7 @@ export async function POST(request: Request) {
         {
           error: "A due date is required.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -138,7 +156,7 @@ export async function POST(request: Request) {
         {
           error: "A time estimate is required.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -147,7 +165,7 @@ export async function POST(request: Request) {
         {
           error: "The task priority is invalid.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -156,14 +174,15 @@ export async function POST(request: Request) {
         {
           error: "The task status is invalid.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const task = await prisma.task.create({
       data: {
         title: body.title.trim(),
-        project: body.project.trim(),
+        description: body.description.trim(),
+        topic: body.topic.trim(),
         dueDate: body.dueDate.trim(),
         timeEstimate: body.timeEstimate.trim(),
         priority: body.priority,
@@ -177,16 +196,17 @@ export async function POST(request: Request) {
         message: "Task created successfully.",
         task,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Failed to create task:", error);
 
     return NextResponse.json(
       {
-        error: "Something went wrong while creating the task.",
+        error:
+          "Something went wrong while creating the task.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

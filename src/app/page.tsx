@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   ListTodo,
   Moon,
+  Pencil,
   Plus,
   Search,
   Settings,
@@ -38,7 +39,8 @@ type TaskPriority = "Low" | "Medium" | "High";
 type Task = {
   id: string;
   title: string;
-  project: string;
+  description: string;
+  topic: string;
   dueDate: string;
   timeEstimate: string;
   priority: TaskPriority;
@@ -48,7 +50,8 @@ type Task = {
 
 type DraftTask = {
   title: string;
-  project: string;
+  description: string;
+  topic: string;
   dueDate: string;
   timeEstimate: string;
   priority: TaskPriority;
@@ -96,18 +99,6 @@ const navigationItems = [
     icon: CalendarDays,
     view: null,
   },
-  {
-    label: "Projects",
-    href: "#projects",
-    icon: FolderKanban,
-    view: null,
-  },
-  {
-    label: "Analytics",
-    href: "#analytics",
-    icon: BarChart3,
-    view: null,
-  },
 ];
 
 function createEmptyTask(
@@ -115,7 +106,8 @@ function createEmptyTask(
 ): DraftTask {
   return {
     title: "",
-    project: "Task Tracker",
+    description: "",
+    topic: "Task Tracker",
     dueDate: "",
     timeEstimate: "1h",
     priority: "Medium",
@@ -180,11 +172,13 @@ function ActiveTaskCard({
   username,
   onAdvance,
   onArchive,
+  onEdit,
 }: {
   task: Task;
   username: string;
   onAdvance: (taskId: string) => Promise<void>;
   onArchive: (taskId: string) => Promise<void>;
+  onEdit: (task: Task) => void;
 }) {
   const actionLabel =
     task.status === "todo"
@@ -205,24 +199,38 @@ function ActiveTaskCard({
           <TaskStatusIcon status={task.status} />
         </figure>
 
-        <button
-          className="icon-button task-menu-button"
-          type="button"
-          onClick={() => {
-            void onArchive(task.id);
-          }}
-          aria-label={`Archive ${task.title}`}
-          title="Archive task"
-        >
-          <Archive size={18} aria-hidden="true" />
-        </button>
+        <section className="task-card-actions">
+          <button
+            className="icon-button task-menu-button"
+            type="button"
+            onClick={() => onEdit(task)}
+            aria-label={`Edit ${task.title}`}
+            title="Edit task"
+          >
+            <Pencil size={17} aria-hidden="true" />
+          </button>
+
+          <button
+            className="icon-button task-menu-button"
+            type="button"
+            onClick={() => {
+              void onArchive(task.id);
+            }}
+            aria-label={`Archive ${task.title}`}
+            title="Archive task"
+          >
+            <Archive size={18} aria-hidden="true" />
+          </button>
+        </section>
       </header>
 
       <h4>{task.title}</h4>
 
+      <p>{task.description}</p>
+
       <p className="task-project">
         <FolderKanban size={15} aria-hidden="true" />
-        {task.project}
+        {task.topic}
       </p>
 
       <dl className="task-metadata">
@@ -307,9 +315,11 @@ function ArchivedTaskCard({
 
       <h4>{task.title}</h4>
 
+      <p>{task.description}</p>
+
       <p className="task-project">
         <FolderKanban size={15} aria-hidden="true" />
-        {task.project}
+        {task.topic}
       </p>
 
       <dl className="task-metadata">
@@ -364,25 +374,39 @@ function ArchivedTaskCard({
 
 export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
+
   const [currentView, setCurrentView] =
     useState<PageView>("dashboard");
 
   const [tasks, setTasks] = useState<Task[]>([]);
+
   const [archivedTasks, setArchivedTasks] = useState<
     Task[]
   >([]);
 
   const [isLoadingTasks, setIsLoadingTasks] =
     useState(true);
+
   const [isLoadingArchive, setIsLoadingArchive] =
     useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [currentDate, setCurrentDate] = useState("Today");
+
+  const [currentDate, setCurrentDate] =
+    useState("Today");
+
   const [currentDateISO, setCurrentDateISO] =
     useState("");
-  const [greeting, setGreeting] = useState("Good day");
-  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [greeting, setGreeting] =
+    useState("Good day");
+
+  const [isModalOpen, setIsModalOpen] =
+    useState(false);
+
+  const [editingTaskId, setEditingTaskId] = useState<
+    string | null
+  >(null);
 
   const [username, setUsername] = useState<
     string | null
@@ -473,6 +497,7 @@ export default function Home() {
           console.error(
             data.error ?? "Failed to load tasks.",
           );
+
           setTasks([]);
           return;
         }
@@ -532,6 +557,7 @@ export default function Home() {
             data.error ??
               "Failed to load archived tasks.",
           );
+
           setArchivedTasks([]);
           return;
         }
@@ -574,6 +600,7 @@ export default function Home() {
     const selectedTheme = savedTheme ?? systemTheme;
 
     setTheme(selectedTheme);
+
     document.documentElement.dataset.theme =
       selectedTheme;
 
@@ -609,7 +636,8 @@ export default function Home() {
     return tasks.filter((task) => {
       return (
         task.title.toLowerCase().includes(query) ||
-        task.project.toLowerCase().includes(query) ||
+        task.description.toLowerCase().includes(query) ||
+        task.topic.toLowerCase().includes(query) ||
         task.priority.toLowerCase().includes(query)
       );
     });
@@ -625,7 +653,8 @@ export default function Home() {
     return archivedTasks.filter((task) => {
       return (
         task.title.toLowerCase().includes(query) ||
-        task.project.toLowerCase().includes(query) ||
+        task.description.toLowerCase().includes(query) ||
+        task.topic.toLowerCase().includes(query) ||
         task.priority.toLowerCase().includes(query)
       );
     });
@@ -669,42 +698,108 @@ export default function Home() {
   function openTaskModal(
     status: TaskStatus = "todo",
   ): void {
+    setEditingTaskId(null);
     setDraftTask(createEmptyTask(status));
+    setIsModalOpen(true);
+  }
+
+  function openEditTaskModal(task: Task): void {
+    setEditingTaskId(task.id);
+
+    setDraftTask({
+      title: task.title,
+      description: task.description,
+      topic: task.topic,
+      dueDate: task.dueDate,
+      timeEstimate: task.timeEstimate,
+      priority: task.priority,
+      status: task.status,
+    });
+
     setIsModalOpen(true);
   }
 
   function closeTaskModal(): void {
     setIsModalOpen(false);
+    setEditingTaskId(null);
+    setDraftTask(createEmptyTask());
   }
 
-  async function addTask(
+  async function submitTask(
     event: FormEvent<HTMLFormElement>,
   ): Promise<void> {
     event.preventDefault();
 
     if (
       !draftTask.title.trim() ||
-      !draftTask.dueDate
+      !draftTask.description.trim() ||
+      !draftTask.topic.trim() ||
+      !draftTask.dueDate ||
+      !draftTask.timeEstimate.trim()
     ) {
       return;
     }
 
+    const requestBody = {
+      title: draftTask.title.trim(),
+      description: draftTask.description.trim(),
+      topic: draftTask.topic.trim(),
+      dueDate: draftTask.dueDate,
+      timeEstimate: draftTask.timeEstimate.trim(),
+      priority: draftTask.priority,
+      status: draftTask.status,
+    };
+
     try {
+      if (editingTaskId) {
+        const response = await fetch(
+          `/api/tasks/${editingTaskId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              action: "edit",
+              ...requestBody,
+            }),
+          },
+        );
+
+        const data = (await response.json()) as {
+          task?: Task;
+          error?: string;
+        };
+
+        if (!response.ok || !data.task) {
+          console.error(
+            data.error ??
+              "The task could not be updated.",
+          );
+
+          return;
+        }
+
+        const updatedTask = data.task;
+
+        setTasks((currentTasks) =>
+          currentTasks.map((task) =>
+            task.id === updatedTask.id
+              ? updatedTask
+              : task,
+          ),
+        );
+
+        closeTaskModal();
+        return;
+      }
+
       const response = await fetch("/api/tasks", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          title: draftTask.title.trim(),
-          project:
-            draftTask.project.trim() || "Personal",
-          dueDate: draftTask.dueDate,
-          timeEstimate:
-            draftTask.timeEstimate.trim() || "1h",
-          priority: draftTask.priority,
-          status: draftTask.status,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = (await response.json()) as {
@@ -717,6 +812,7 @@ export default function Home() {
           data.error ??
             "The task could not be created.",
         );
+
         return;
       }
 
@@ -729,7 +825,7 @@ export default function Home() {
 
       closeTaskModal();
     } catch (error) {
-      console.error("Failed to create task:", error);
+      console.error("Failed to save task:", error);
     }
   }
 
@@ -776,6 +872,7 @@ export default function Home() {
           data.error ??
             "The task status could not be updated.",
         );
+
         return;
       }
 
@@ -821,6 +918,7 @@ export default function Home() {
           data.error ??
             "The task could not be archived.",
         );
+
         return;
       }
 
@@ -872,6 +970,7 @@ export default function Home() {
   }
 
   const userInitials = createInitials(username);
+  const isEditingTask = editingTaskId !== null;
 
   return (
     <main className="dashboard-shell" id="dashboard">
@@ -984,7 +1083,7 @@ export default function Home() {
                 type="search"
                 placeholder={
                   currentView === "dashboard"
-                    ? "Search tasks or projects"
+                    ? "Search tasks or topics"
                     : "Search archived tasks"
                 }
                 value={searchTerm}
@@ -1040,8 +1139,7 @@ export default function Home() {
 
                 <p>
                   Organise your work, manage your
-                  deadlines and keep your projects
-                  moving.
+                  deadlines and keep your topics moving.
                 </p>
               </section>
 
@@ -1073,9 +1171,7 @@ export default function Home() {
                   </header>
 
                   <strong>{tasks.length}</strong>
-                  <small>
-                    Across all your projects
-                  </small>
+                  <small>Across all your topics</small>
                 </article>
               </li>
 
@@ -1251,6 +1347,9 @@ export default function Home() {
                                 username={username}
                                 onAdvance={advanceTask}
                                 onArchive={archiveTask}
+                                onEdit={
+                                  openEditTaskModal
+                                }
                               />
                             </li>
                           ))}
@@ -1361,7 +1460,8 @@ export default function Home() {
                             </header>
 
                             <p>
-                              Archived {column.title.toLowerCase()}{" "}
+                              Archived{" "}
+                              {column.title.toLowerCase()}{" "}
                               tasks
                             </p>
                           </section>
@@ -1405,7 +1505,7 @@ export default function Home() {
         <dialog
           className="task-dialog"
           open
-          aria-labelledby="new-task-title"
+          aria-labelledby="task-form-title"
           onClick={(event) => {
             if (
               event.target === event.currentTarget
@@ -1421,8 +1521,10 @@ export default function Home() {
                   Task details
                 </p>
 
-                <h2 id="new-task-title">
-                  Create a new task
+                <h2 id="task-form-title">
+                  {isEditingTask
+                    ? "Edit task"
+                    : "Create a new task"}
                 </h2>
               </section>
 
@@ -1438,7 +1540,7 @@ export default function Home() {
 
             <form
               className="task-form"
-              onSubmit={addTask}
+              onSubmit={submitTask}
             >
               <label className="form-field form-field-full">
                 Task name
@@ -1459,18 +1561,36 @@ export default function Home() {
               </label>
 
               <label className="form-field form-field-full">
-                Project
+                Description
 
-                <input
-                  type="text"
-                  placeholder="Project name"
-                  value={draftTask.project}
+                <textarea
+                  placeholder="Describe what needs to be completed"
+                  value={draftTask.description}
                   onChange={(event) =>
                     setDraftTask((currentTask) => ({
                       ...currentTask,
-                      project: event.target.value,
+                      description: event.target.value,
                     }))
                   }
+                  rows={4}
+                  required
+                />
+              </label>
+
+              <label className="form-field form-field-full">
+                Topic
+
+                <input
+                  type="text"
+                  placeholder="For example: Software Design"
+                  value={draftTask.topic}
+                  onChange={(event) =>
+                    setDraftTask((currentTask) => ({
+                      ...currentTask,
+                      topic: event.target.value,
+                    }))
+                  }
+                  required
                 />
               </label>
 
@@ -1488,9 +1608,11 @@ export default function Home() {
                   }
                 >
                   <option value="todo">To do</option>
+
                   <option value="progress">
                     In progress
                   </option>
+
                   <option value="done">
                     Completed
                   </option>
@@ -1548,6 +1670,7 @@ export default function Home() {
                         event.target.value,
                     }))
                   }
+                  required
                 />
               </label>
 
@@ -1564,11 +1687,21 @@ export default function Home() {
                   className="primary-button"
                   type="submit"
                 >
-                  <Plus
-                    size={18}
-                    aria-hidden="true"
-                  />
-                  Create task
+                  {isEditingTask ? (
+                    <Pencil
+                      size={18}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Plus
+                      size={18}
+                      aria-hidden="true"
+                    />
+                  )}
+
+                  {isEditingTask
+                    ? "Save changes"
+                    : "Create task"}
                 </button>
               </footer>
             </form>
