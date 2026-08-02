@@ -12,14 +12,12 @@ import {
   FolderKanban,
   LayoutDashboard,
   ListTodo,
-  LogOut,
   Moon,
   MoreHorizontal,
   Plus,
   Search,
   Settings,
   Sun,
-  Users,
   X,
 } from "lucide-react";
 
@@ -44,7 +42,6 @@ type Task = {
   timeEstimate: string;
   priority: TaskPriority;
   status: TaskStatus;
-  assignee: string;
 };
 
 type DraftTask = {
@@ -55,79 +52,6 @@ type DraftTask = {
   priority: TaskPriority;
   status: TaskStatus;
 };
-
-const initialTasks: Task[] = [
-  {
-    id: "task-1",
-    title: "Design dashboard wireframe",
-    project: "Task Tracker",
-    dueDate: "2026-08-02",
-    timeEstimate: "2h 30m",
-    priority: "High",
-    status: "todo",
-    assignee: "VR",
-  },
-  {
-    id: "task-2",
-    title: "Create reusable button component",
-    project: "Task Tracker",
-    dueDate: "2026-08-04",
-    timeEstimate: "1h 15m",
-    priority: "Medium",
-    status: "todo",
-    assignee: "VR",
-  },
-  {
-    id: "task-3",
-    title: "Review assignment requirements",
-    project: "University",
-    dueDate: "2026-08-05",
-    timeEstimate: "45m",
-    priority: "Low",
-    status: "todo",
-    assignee: "VR",
-  },
-  {
-    id: "task-4",
-    title: "Build responsive navigation",
-    project: "Task Tracker",
-    dueDate: "2026-08-01",
-    timeEstimate: "3h",
-    priority: "High",
-    status: "progress",
-    assignee: "VR",
-  },
-  {
-    id: "task-5",
-    title: "Connect light and dark themes",
-    project: "Task Tracker",
-    dueDate: "2026-08-03",
-    timeEstimate: "1h",
-    priority: "Medium",
-    status: "progress",
-    assignee: "VR",
-  },
-  {
-    id: "task-6",
-    title: "Set up the Next.js application",
-    project: "Task Tracker",
-    dueDate: "2026-07-31",
-    timeEstimate: "2h",
-    priority: "High",
-    status: "done",
-    assignee: "VR",
-  },
-  {
-    id: "task-7",
-    title: "Choose the application colour palette",
-    project: "Task Tracker",
-    dueDate: "2026-07-31",
-    timeEstimate: "30m",
-    priority: "Low",
-    status: "done",
-    assignee: "VR",
-  },
-];
 
 const columns: {
   status: TaskStatus;
@@ -182,12 +106,6 @@ const navigationItems = [
     icon: BarChart3,
     active: false,
   },
-  {
-    label: "Team",
-    href: "#team",
-    icon: Users,
-    active: false,
-  },
 ];
 
 function createEmptyTask(
@@ -210,6 +128,27 @@ function formatDate(date: string): string {
   }).format(new Date(`${date}T00:00:00`));
 }
 
+function createInitials(username: string): string {
+  const nameParts = username
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return "U";
+  }
+
+  if (nameParts.length === 1) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+
+  const firstInitial = nameParts[0].charAt(0);
+  const lastInitial =
+    nameParts[nameParts.length - 1].charAt(0);
+
+  return `${firstInitial}${lastInitial}`.toUpperCase();
+}
+
 function TaskStatusIcon({
   status,
 }: {
@@ -228,10 +167,12 @@ function TaskStatusIcon({
 
 function TaskCard({
   task,
+  username,
   onAdvance,
 }: {
   task: Task;
-  onAdvance: (taskId: string) => void;
+  username: string;
+  onAdvance: (taskId: string) => Promise<void>;
 }) {
   const actionLabel =
     task.status === "todo"
@@ -239,6 +180,8 @@ function TaskCard({
       : task.status === "progress"
         ? "Mark task as completed"
         : "Task has been completed";
+
+  const initials = createInitials(username);
 
   return (
     <article className="task-card">
@@ -296,15 +239,18 @@ function TaskCard({
         <section className="task-card-actions">
           <strong
             className="avatar avatar-small"
-            aria-label={`Assigned to ${task.assignee}`}
+            aria-label={`Task belongs to ${username}`}
+            title={username}
           >
-            {task.assignee}
+            {initials}
           </strong>
 
           <button
             className="advance-button"
             type="button"
-            onClick={() => onAdvance(task.id)}
+            onClick={() => {
+              void onAdvance(task.id);
+            }}
             disabled={task.status === "done"}
             aria-label={actionLabel}
             title={actionLabel}
@@ -323,63 +269,127 @@ function TaskCard({
 
 export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] =
+    useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentDate, setCurrentDate] = useState("Today");
-  const [currentDateISO, setCurrentDateISO] = useState("");
+  const [currentDateISO, setCurrentDateISO] =
+    useState("");
   const [greeting, setGreeting] = useState("Good day");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [username, setUsername] = useState<string | null>(null);
-  const [isCheckingUser, setIsCheckingUser] = useState(true);
+  const [username, setUsername] = useState<
+    string | null
+  >(null);
+  const [isCheckingUser, setIsCheckingUser] =
+    useState(true);
 
   const [draftTask, setDraftTask] = useState<DraftTask>(
     createEmptyTask(),
   );
 
   useEffect(() => {
-  let isMounted = true;
+    let isMounted = true;
 
-  async function loadSavedUser() {
-    try {
-      const response = await fetch("/api/users", {
-        method: "GET",
-        cache: "no-store",
-      });
+    async function loadSavedUser(): Promise<void> {
+      try {
+        const response = await fetch("/api/users", {
+          method: "GET",
+          cache: "no-store",
+        });
 
-      const data = (await response.json()) as {
-        user: {
-          username: string;
-        } | null;
-      };
+        const data = (await response.json()) as {
+          user: {
+            username: string;
+          } | null;
+          error?: string;
+        };
 
-      if (!isMounted) {
-        return;
-      }
+        if (!isMounted) {
+          return;
+        }
 
-      if (response.ok && data.user) {
-        setUsername(data.user.username);
-      } else {
-        setUsername(null);
-      }
-    } catch (error) {
-      console.error("Failed to load saved user:", error);
+        if (response.ok && data.user) {
+          setUsername(data.user.username);
+        } else {
+          setUsername(null);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load saved user:",
+          error,
+        );
 
-      if (isMounted) {
-        setUsername(null);
-      }
-    } finally {
-      if (isMounted) {
-        setIsCheckingUser(false);
+        if (isMounted) {
+          setUsername(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsCheckingUser(false);
+        }
       }
     }
-  }
 
-  loadSavedUser();
+    void loadSavedUser();
 
-  return () => {
-    isMounted = false;
-  };
-}, []);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isCheckingUser || !username) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadTasks(): Promise<void> {
+      try {
+        setIsLoadingTasks(true);
+
+        const response = await fetch("/api/tasks", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = (await response.json()) as {
+          tasks: Task[];
+          error?: string;
+        };
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (!response.ok) {
+          console.error(
+            data.error ?? "Failed to load tasks.",
+          );
+          setTasks([]);
+          return;
+        }
+
+        setTasks(data.tasks);
+      } catch (error) {
+        console.error("Failed to load tasks:", error);
+
+        if (isMounted) {
+          setTasks([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingTasks(false);
+        }
+      }
+    }
+
+    void loadTasks();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isCheckingUser, username]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(
@@ -395,7 +405,8 @@ export default function Home() {
     const selectedTheme = savedTheme ?? systemTheme;
 
     setTheme(selectedTheme);
-    document.documentElement.dataset.theme = selectedTheme;
+    document.documentElement.dataset.theme =
+      selectedTheme;
 
     const now = new Date();
     const hour = now.getHours();
@@ -445,20 +456,26 @@ export default function Home() {
 
   const remainingHighPriorityTasks = tasks.filter(
     (task) =>
-      task.priority === "High" && task.status !== "done",
+      task.priority === "High" &&
+      task.status !== "done",
   ).length;
 
   const completionPercentage =
     tasks.length === 0
       ? 0
-      : Math.round((completedTasks / tasks.length) * 100);
+      : Math.round(
+          (completedTasks / tasks.length) * 100,
+        );
 
   function toggleTheme(): void {
     const newTheme: Theme =
       theme === "light" ? "dark" : "light";
 
     setTheme(newTheme);
-    localStorage.setItem("task-tracker-theme", newTheme);
+    localStorage.setItem(
+      "task-tracker-theme",
+      newTheme,
+    );
     document.documentElement.dataset.theme = newTheme;
   }
 
@@ -473,77 +490,152 @@ export default function Home() {
     setIsModalOpen(false);
   }
 
-  function addTask(
+  async function addTask(
     event: FormEvent<HTMLFormElement>,
-  ): void {
+  ): Promise<void> {
     event.preventDefault();
 
-    if (!draftTask.title.trim() || !draftTask.dueDate) {
+    if (
+      !draftTask.title.trim() ||
+      !draftTask.dueDate
+    ) {
       return;
     }
 
-    const newTask: Task = {
-      id: crypto.randomUUID(),
-      title: draftTask.title.trim(),
-      project: draftTask.project.trim() || "Personal",
-      dueDate: draftTask.dueDate,
-      timeEstimate: draftTask.timeEstimate.trim() || "1h",
-      priority: draftTask.priority,
-      status: draftTask.status,
-      assignee: "VR",
-    };
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: draftTask.title.trim(),
+          project:
+            draftTask.project.trim() || "Personal",
+          dueDate: draftTask.dueDate,
+          timeEstimate:
+            draftTask.timeEstimate.trim() || "1h",
+          priority: draftTask.priority,
+          status: draftTask.status,
+        }),
+      });
 
-    setTasks((currentTasks) => [
-      newTask,
-      ...currentTasks,
-    ]);
+      const data = (await response.json()) as {
+        task?: Task;
+        error?: string;
+      };
 
-    closeTaskModal();
+      if (!response.ok || !data.task) {
+        console.error(
+          data.error ??
+            "The task could not be created.",
+        );
+        return;
+      }
+
+      const createdTask = data.task;
+
+      setTasks((currentTasks) => [
+        createdTask,
+        ...currentTasks,
+      ]);
+
+      closeTaskModal();
+    } catch (error) {
+      console.error("Failed to create task:", error);
+    }
   }
 
-  function advanceTask(taskId: string): void {
-    setTasks((currentTasks) =>
-      currentTasks.map((task) => {
-        if (task.id !== taskId) {
-          return task;
-        }
-
-        if (task.status === "todo") {
-          return {
-            ...task,
-            status: "progress",
-          };
-        }
-
-        if (task.status === "progress") {
-          return {
-            ...task,
-            status: "done",
-          };
-        }
-
-        return task;
-      }),
+  async function advanceTask(
+    taskId: string,
+  ): Promise<void> {
+    const selectedTask = tasks.find(
+      (task) => task.id === taskId,
     );
+
+    if (
+      !selectedTask ||
+      selectedTask.status === "done"
+    ) {
+      return;
+    }
+
+    const newStatus: TaskStatus =
+      selectedTask.status === "todo"
+        ? "progress"
+        : "done";
+
+    try {
+      const response = await fetch(
+        `/api/tasks/${taskId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            status: newStatus,
+          }),
+        },
+      );
+
+      const data = (await response.json()) as {
+        task?: Task;
+        error?: string;
+      };
+
+      if (!response.ok || !data.task) {
+        console.error(
+          data.error ??
+            "The task status could not be updated.",
+        );
+        return;
+      }
+
+      const updatedTask = data.task;
+
+      setTasks((currentTasks) =>
+        currentTasks.map((task) =>
+          task.id === taskId ? updatedTask : task,
+        ),
+      );
+    } catch (error) {
+      console.error(
+        "Failed to update task status:",
+        error,
+      );
+    }
   }
 
   if (isCheckingUser) {
-  return (
-    <main>
-      <p role="status" aria-live="polite">
-        Loading your account...
-      </p>
-    </main>
-  );
-}
+    return (
+      <main>
+        <p role="status" aria-live="polite">
+          Loading your account...
+        </p>
+      </main>
+    );
+  }
 
-if (!username) {
-  return (
-    <main>
-      <UsernameForm onUserSaved={setUsername} />
-    </main>
-  );
-}
+  if (!username) {
+    return (
+      <main>
+        <UsernameForm onUserSaved={setUsername} />
+      </main>
+    );
+  }
+
+  if (isLoadingTasks) {
+    return (
+      <main>
+        <p role="status" aria-live="polite">
+          Loading your tasks...
+        </p>
+      </main>
+    );
+  }
+
+  const userInitials = createInitials(username);
 
   return (
     <main className="dashboard-shell" id="dashboard">
@@ -555,10 +647,15 @@ if (!username) {
             aria-label="TaskFlow dashboard"
           >
             <figure className="brand-icon">
-              <CheckCircle2 size={23} aria-hidden="true" />
+              <CheckCircle2
+                size={23}
+                aria-hidden="true"
+              />
             </figure>
 
-            <strong className="brand-name">TaskFlow</strong>
+            <strong className="brand-name">
+              TaskFlow
+            </strong>
           </a>
         </header>
 
@@ -566,7 +663,9 @@ if (!username) {
           className="sidebar-navigation"
           aria-label="Main navigation"
         >
-          <p className="navigation-heading">Workspace</p>
+          <p className="navigation-heading">
+            Workspace
+          </p>
 
           <ul>
             {navigationItems.map((item) => {
@@ -599,26 +698,26 @@ if (!username) {
         </nav>
 
         <footer className="sidebar-footer">
-          <a className="navigation-item" href="#settings">
+          <a
+            className="navigation-item"
+            href="#settings"
+          >
             <Settings size={20} aria-hidden="true" />
             Settings
           </a>
 
           <article className="sidebar-profile">
-            <strong className="avatar">VR</strong>
+            <strong
+              className="avatar"
+              aria-label={`${username}'s profile`}
+            >
+              {userInitials}
+            </strong>
 
             <header className="profile-details">
-              <strong>Vareshan</strong>
-              <small>Student account</small>
+              <strong>{username}</strong>
+              <small>Local account</small>
             </header>
-
-            <button
-              className="profile-logout"
-              type="button"
-              aria-label="Log out"
-            >
-              <LogOut size={18} aria-hidden="true" />
-            </button>
           </article>
         </footer>
       </aside>
@@ -668,9 +767,9 @@ if (!username) {
 
             <strong
               className="avatar topbar-avatar"
-              aria-label="Vareshan's profile"
+              aria-label={`${username}'s profile`}
             >
-              VR
+              {userInitials}
             </strong>
           </section>
         </header>
@@ -678,13 +777,18 @@ if (!username) {
         <section className="content-container">
           <header className="welcome-section">
             <section>
-              <p className="eyebrow">Personal workspace</p>
+              <p className="eyebrow">
+                Personal workspace
+              </p>
 
-              <h1>{greeting}, Vareshan!</h1>
+              <h1>
+                {greeting}, {username}!
+              </h1>
 
               <p>
-                Organise your work, manage your deadlines and
-                keep your projects moving.
+                Organise your work, manage your
+                deadlines and keep your projects
+                moving.
               </p>
             </section>
 
@@ -706,14 +810,19 @@ if (!username) {
               <article className="stat-card">
                 <header className="stat-card-heading">
                   <figure className="stat-icon">
-                    <ListTodo size={20} aria-hidden="true" />
+                    <ListTodo
+                      size={20}
+                      aria-hidden="true"
+                    />
                   </figure>
 
                   <p>Total tasks</p>
                 </header>
 
                 <strong>{tasks.length}</strong>
-                <small>Across all your projects</small>
+                <small>
+                  Across all your projects
+                </small>
               </article>
             </li>
 
@@ -731,7 +840,9 @@ if (!username) {
                 </header>
 
                 <strong>{inProgressTasks}</strong>
-                <small>Tasks currently active</small>
+                <small>
+                  Tasks currently active
+                </small>
               </article>
             </li>
 
@@ -749,7 +860,9 @@ if (!username) {
                 </header>
 
                 <strong>{completedTasks}</strong>
-                <small>Tasks successfully finished</small>
+                <small>
+                  Tasks successfully finished
+                </small>
               </article>
             </li>
 
@@ -766,11 +879,13 @@ if (!username) {
                   <p>Overall progress</p>
                 </header>
 
-                <strong>{completionPercentage}%</strong>
+                <strong>
+                  {completionPercentage}%
+                </strong>
 
                 <small>
-                  {remainingHighPriorityTasks} high-priority
-                  tasks remaining
+                  {remainingHighPriorityTasks}{" "}
+                  high-priority tasks remaining
                 </small>
 
                 <progress
@@ -784,15 +899,21 @@ if (!username) {
             </li>
           </ul>
 
-          <section className="board-section" id="tasks">
+          <section
+            className="board-section"
+            id="tasks"
+          >
             <header className="board-header">
               <section>
-                <p className="eyebrow">Task management</p>
+                <p className="eyebrow">
+                  Task management
+                </p>
+
                 <h2>My task board</h2>
 
                 <p>
-                  Move tasks through each stage as you complete
-                  your work.
+                  Move tasks through each stage as you
+                  complete your work.
                 </p>
               </section>
 
@@ -809,7 +930,10 @@ if (!username) {
                     type="button"
                     onClick={() => openTaskModal()}
                   >
-                    <Plus size={18} aria-hidden="true" />
+                    <Plus
+                      size={18}
+                      aria-hidden="true"
+                    />
                     Add task
                   </button>
                 </li>
@@ -821,9 +945,11 @@ if (!username) {
               aria-label="Kanban task board"
             >
               {columns.map((column) => {
-                const columnTasks = filteredTasks.filter(
-                  (task) => task.status === column.status,
-                );
+                const columnTasks =
+                  filteredTasks.filter(
+                    (task) =>
+                      task.status === column.status,
+                  );
 
                 return (
                   <article
@@ -856,7 +982,10 @@ if (!username) {
                         }
                         aria-label={`Add task to ${column.title}`}
                       >
-                        <Plus size={18} aria-hidden="true" />
+                        <Plus
+                          size={18}
+                          aria-hidden="true"
+                        />
                       </button>
                     </header>
 
@@ -866,6 +995,7 @@ if (!username) {
                           <li key={task.id}>
                             <TaskCard
                               task={task}
+                              username={username}
                               onAdvance={advanceTask}
                             />
                           </li>
@@ -883,7 +1013,9 @@ if (!username) {
                         <button
                           type="button"
                           onClick={() =>
-                            openTaskModal(column.status)
+                            openTaskModal(
+                              column.status,
+                            )
                           }
                         >
                           Add a task
@@ -904,7 +1036,9 @@ if (!username) {
           open
           aria-labelledby="new-task-title"
           onClick={(event) => {
-            if (event.target === event.currentTarget) {
+            if (
+              event.target === event.currentTarget
+            ) {
               closeTaskModal();
             }
           }}
@@ -912,8 +1046,13 @@ if (!username) {
           <article className="task-modal">
             <header className="modal-header">
               <section>
-                <p className="eyebrow">Task details</p>
-                <h2 id="new-task-title">Create a new task</h2>
+                <p className="eyebrow">
+                  Task details
+                </p>
+
+                <h2 id="new-task-title">
+                  Create a new task
+                </h2>
               </section>
 
               <button
@@ -926,7 +1065,10 @@ if (!username) {
               </button>
             </header>
 
-            <form className="task-form" onSubmit={addTask}>
+            <form
+              className="task-form"
+              onSubmit={addTask}
+            >
               <label className="form-field form-field-full">
                 Task name
 
@@ -975,8 +1117,12 @@ if (!username) {
                   }
                 >
                   <option value="todo">To do</option>
-                  <option value="progress">In progress</option>
-                  <option value="done">Completed</option>
+                  <option value="progress">
+                    In progress
+                  </option>
+                  <option value="done">
+                    Completed
+                  </option>
                 </select>
               </label>
 
@@ -994,7 +1140,9 @@ if (!username) {
                   }
                 >
                   <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
+                  <option value="Medium">
+                    Medium
+                  </option>
                   <option value="High">High</option>
                 </select>
               </label>
@@ -1025,7 +1173,8 @@ if (!username) {
                   onChange={(event) =>
                     setDraftTask((currentTask) => ({
                       ...currentTask,
-                      timeEstimate: event.target.value,
+                      timeEstimate:
+                        event.target.value,
                     }))
                   }
                 />
@@ -1044,7 +1193,10 @@ if (!username) {
                   className="primary-button"
                   type="submit"
                 >
-                  <Plus size={18} aria-hidden="true" />
+                  <Plus
+                    size={18}
+                    aria-hidden="true"
+                  />
                   Create task
                 </button>
               </footer>
