@@ -58,6 +58,9 @@ type DraftTask = {
   status: TaskStatus;
 };
 
+const dismissedNotificationsStorageKey =
+  "dismissed-overdue-notifications";
+
 const columns: {
   status: TaskStatus;
   title: string;
@@ -151,17 +154,37 @@ function createInitials(username: string): string {
   return `${firstInitial}${lastInitial}`.toUpperCase();
 }
 
+function isTaskOverdue(task: Task): boolean {
+  if (task.status === "done") {
+    return false;
+  }
+
+  const dueDate = new Date(
+    `${task.dueDate}T00:00:00`,
+  );
+
+  const today = new Date();
+
+  today.setHours(0, 0, 0, 0);
+
+  return dueDate < today;
+}
+
 function TaskStatusIcon({
   status,
 }: {
   status: TaskStatus;
 }) {
   if (status === "done") {
-    return <CheckCircle2 size={18} aria-hidden="true" />;
+    return (
+      <CheckCircle2 size={18} aria-hidden="true" />
+    );
   }
 
   if (status === "progress") {
-    return <CircleDashed size={18} aria-hidden="true" />;
+    return (
+      <CircleDashed size={18} aria-hidden="true" />
+    );
   }
 
   return <Circle size={18} aria-hidden="true" />;
@@ -180,6 +203,9 @@ function ActiveTaskCard({
   onArchive: (taskId: string) => Promise<void>;
   onEdit: (task: Task) => void;
 }) {
+  const initials = createInitials(username);
+  const overdue = isTaskOverdue(task);
+
   const actionLabel =
     task.status === "todo"
       ? "Move task to in progress"
@@ -187,10 +213,12 @@ function ActiveTaskCard({
         ? "Mark task as completed"
         : "Task has been completed";
 
-  const initials = createInitials(username);
-
   return (
-    <article className="task-card">
+    <article
+      className={`task-card ${
+        overdue ? "task-card-overdue" : ""
+      }`}
+    >
       <header className="task-card-header">
         <figure
           className={`task-status-icon status-${task.status}`}
@@ -243,6 +271,12 @@ function ActiveTaskCard({
           <time dateTime={task.dueDate}>
             {formatDate(task.dueDate)}
           </time>
+
+          {overdue && (
+            <strong className="overdue-label">
+              Overdue
+            </strong>
+          )}
         </dd>
 
         <dt>
@@ -280,9 +314,15 @@ function ActiveTaskCard({
             title={actionLabel}
           >
             {task.status === "done" ? (
-              <CheckCircle2 size={17} aria-hidden="true" />
+              <CheckCircle2
+                size={17}
+                aria-hidden="true"
+              />
             ) : (
-              <ChevronRight size={17} aria-hidden="true" />
+              <ChevronRight
+                size={17}
+                aria-hidden="true"
+              />
             )}
           </button>
         </section>
@@ -373,7 +413,8 @@ function ArchivedTaskCard({
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] =
+    useState<Theme>("light");
 
   const [currentView, setCurrentView] =
     useState<PageView>("dashboard");
@@ -407,6 +448,16 @@ export default function Home() {
   const [editingTaskId, setEditingTaskId] = useState<
     string | null
   >(null);
+
+  const [
+    isNotificationsOpen,
+    setIsNotificationsOpen,
+  ] = useState(false);
+
+  const [
+    dismissedNotificationIds,
+    setDismissedNotificationIds,
+  ] = useState<string[]>([]);
 
   const [username, setUsername] = useState<
     string | null
@@ -524,6 +575,36 @@ export default function Home() {
   }, [isCheckingUser, username]);
 
   useEffect(() => {
+    try {
+      const savedDismissedIds = localStorage.getItem(
+        dismissedNotificationsStorageKey,
+      );
+
+      if (!savedDismissedIds) {
+        return;
+      }
+
+      const parsedIds = JSON.parse(
+        savedDismissedIds,
+      ) as unknown;
+
+      if (
+        Array.isArray(parsedIds) &&
+        parsedIds.every(
+          (taskId) => typeof taskId === "string",
+        )
+      ) {
+        setDismissedNotificationIds(parsedIds);
+      }
+    } catch (error) {
+      console.error(
+        "Failed to load dismissed notifications:",
+        error,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
     if (
       currentView !== "archive" ||
       isCheckingUser ||
@@ -636,7 +717,9 @@ export default function Home() {
     return tasks.filter((task) => {
       return (
         task.title.toLowerCase().includes(query) ||
-        task.description.toLowerCase().includes(query) ||
+        task.description
+          .toLowerCase()
+          .includes(query) ||
         task.topic.toLowerCase().includes(query) ||
         task.priority.toLowerCase().includes(query)
       );
@@ -653,12 +736,27 @@ export default function Home() {
     return archivedTasks.filter((task) => {
       return (
         task.title.toLowerCase().includes(query) ||
-        task.description.toLowerCase().includes(query) ||
+        task.description
+          .toLowerCase()
+          .includes(query) ||
         task.topic.toLowerCase().includes(query) ||
         task.priority.toLowerCase().includes(query)
       );
     });
   }, [archivedTasks, searchTerm]);
+
+  const overdueTasks = useMemo(() => {
+    return tasks.filter((task) =>
+      isTaskOverdue(task),
+    );
+  }, [tasks]);
+
+  const visibleOverdueTasks = useMemo(() => {
+    return overdueTasks.filter(
+      (task) =>
+        !dismissedNotificationIds.includes(task.id),
+    );
+  }, [dismissedNotificationIds, overdueTasks]);
 
   const completedTasks = tasks.filter(
     (task) => task.status === "done",
@@ -725,6 +823,30 @@ export default function Home() {
     setDraftTask(createEmptyTask());
   }
 
+  function dismissNotification(taskId: string): void {
+    setDismissedNotificationIds((currentIds) => {
+      if (currentIds.includes(taskId)) {
+        return currentIds;
+      }
+
+      const updatedIds = [...currentIds, taskId];
+
+      try {
+        localStorage.setItem(
+          dismissedNotificationsStorageKey,
+          JSON.stringify(updatedIds),
+        );
+      } catch (error) {
+        console.error(
+          "Failed to save dismissed notifications:",
+          error,
+        );
+      }
+
+      return updatedIds;
+    });
+  }
+
   async function submitTask(
     event: FormEvent<HTMLFormElement>,
   ): Promise<void> {
@@ -745,7 +867,8 @@ export default function Home() {
       description: draftTask.description.trim(),
       topic: draftTask.topic.trim(),
       dueDate: draftTask.dueDate,
-      timeEstimate: draftTask.timeEstimate.trim(),
+      timeEstimate:
+        draftTask.timeEstimate.trim(),
       priority: draftTask.priority,
       status: draftTask.status,
     };
@@ -937,7 +1060,10 @@ export default function Home() {
         ),
       ]);
     } catch (error) {
-      console.error("Failed to archive task:", error);
+      console.error(
+        "Failed to archive task:",
+        error,
+      );
     }
   }
 
@@ -973,7 +1099,10 @@ export default function Home() {
   const isEditingTask = editingTaskId !== null;
 
   return (
-    <main className="dashboard-shell" id="dashboard">
+    <main
+      className="dashboard-shell"
+      id="dashboard"
+    >
       <aside className="sidebar">
         <header className="sidebar-header">
           <a
@@ -1027,6 +1156,7 @@ export default function Home() {
                     onClick={(event) => {
                       if (item.view) {
                         event.preventDefault();
+
                         setCurrentView(item.view);
                       }
                     }}
@@ -1049,7 +1179,11 @@ export default function Home() {
             className="navigation-item"
             href="#settings"
           >
-            <Settings size={20} aria-hidden="true" />
+            <Settings
+              size={20}
+              aria-hidden="true"
+            />
+
             Settings
           </a>
 
@@ -1077,7 +1211,10 @@ export default function Home() {
 
           <section className="topbar-actions">
             <label className="search-field">
-              <Search size={19} aria-hidden="true" />
+              <Search
+                size={19}
+                aria-hidden="true"
+              />
 
               <input
                 type="search"
@@ -1093,26 +1230,139 @@ export default function Home() {
               />
             </label>
 
-            <button
-              className="icon-button notification-button"
-              type="button"
-              aria-label="View notifications"
-            >
-              <Bell size={20} aria-hidden="true" />
-            </button>
+            <section className="notification-centre">
+              <button
+                className="icon-button notification-button"
+                type="button"
+                aria-label={`View notifications. ${visibleOverdueTasks.length} notifications`}
+                aria-expanded={isNotificationsOpen}
+                aria-controls="overdue-notifications"
+                onClick={() =>
+                  setIsNotificationsOpen(
+                    (isOpen) => !isOpen,
+                  )
+                }
+              >
+                <Bell
+                  size={20}
+                  aria-hidden="true"
+                />
+
+                {visibleOverdueTasks.length > 0 && (
+                  <small
+                    className="notification-count"
+                    aria-hidden="true"
+                  >
+                    {visibleOverdueTasks.length}
+                  </small>
+                )}
+              </button>
+
+              {isNotificationsOpen && (
+                <aside
+                  className="notification-panel"
+                  id="overdue-notifications"
+                  aria-labelledby="notification-heading"
+                >
+                  <header className="notification-panel-header">
+                    <section>
+                      <p className="eyebrow">
+                        Deadlines
+                      </p>
+
+                      <h2 id="notification-heading">
+                        Notifications
+                      </h2>
+                    </section>
+
+                    <button
+                      className="icon-button"
+                      type="button"
+                      onClick={() =>
+                        setIsNotificationsOpen(false)
+                      }
+                      aria-label="Close notifications"
+                    >
+                      <X
+                        size={18}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </header>
+
+                  {visibleOverdueTasks.length === 0 ? (
+                    <p className="notification-empty">
+                      You have no notifications.
+                    </p>
+                  ) : (
+                    <ol className="notification-list">
+                      {visibleOverdueTasks.map((task) => (
+                        <li key={task.id}>
+                          <article className="notification-item">
+                            <header>
+                              <strong>
+                                {task.title}
+                              </strong>
+
+                              <section className="notification-item-actions">
+                                <small>Overdue</small>
+
+                                <button
+                                  className="notification-dismiss-button"
+                                  type="button"
+                                  onClick={() =>
+                                    dismissNotification(
+                                      task.id,
+                                    )
+                                  }
+                                  aria-label={`Dismiss notification for ${task.title}`}
+                                >
+                                  Dismiss
+                                </button>
+                              </section>
+                            </header>
+
+                            <p>{task.topic}</p>
+
+                            <p>
+                              Due{" "}
+                              <time
+                                dateTime={task.dueDate}
+                              >
+                                {formatDate(
+                                  task.dueDate,
+                                )}
+                              </time>
+                            </p>
+                          </article>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </aside>
+              )}
+            </section>
 
             <button
               className="icon-button"
               type="button"
               onClick={toggleTheme}
               aria-label={`Switch to ${
-                theme === "light" ? "dark" : "light"
+                theme === "light"
+                  ? "dark"
+                  : "light"
               } mode`}
             >
               {theme === "light" ? (
-                <Moon size={20} aria-hidden="true" />
+                <Moon
+                  size={20}
+                  aria-hidden="true"
+                />
               ) : (
-                <Sun size={20} aria-hidden="true" />
+                <Sun
+                  size={20}
+                  aria-hidden="true"
+                />
               )}
             </button>
 
@@ -1139,7 +1389,8 @@ export default function Home() {
 
                 <p>
                   Organise your work, manage your
-                  deadlines and keep your topics moving.
+                  deadlines and keep your topics
+                  moving.
                 </p>
               </section>
 
@@ -1148,7 +1399,11 @@ export default function Home() {
                 type="button"
                 onClick={() => openTaskModal()}
               >
-                <Plus size={19} aria-hidden="true" />
+                <Plus
+                  size={19}
+                  aria-hidden="true"
+                />
+
                 New task
               </button>
             </header>
@@ -1171,7 +1426,10 @@ export default function Home() {
                   </header>
 
                   <strong>{tasks.length}</strong>
-                  <small>Across all your topics</small>
+
+                  <small>
+                    Across all your topics
+                  </small>
                 </article>
               </li>
 
@@ -1189,6 +1447,7 @@ export default function Home() {
                   </header>
 
                   <strong>{inProgressTasks}</strong>
+
                   <small>
                     Tasks currently active
                   </small>
@@ -1209,6 +1468,7 @@ export default function Home() {
                   </header>
 
                   <strong>{completedTasks}</strong>
+
                   <small>
                     Tasks successfully finished
                   </small>
@@ -1283,6 +1543,7 @@ export default function Home() {
                         size={18}
                         aria-hidden="true"
                       />
+
                       Add task
                     </button>
                   </li>
@@ -1327,7 +1588,9 @@ export default function Home() {
                           className="column-add-button"
                           type="button"
                           onClick={() =>
-                            openTaskModal(column.status)
+                            openTaskModal(
+                              column.status,
+                            )
                           }
                           aria-label={`Add task to ${column.title}`}
                         >
@@ -1436,7 +1699,8 @@ export default function Home() {
                     const columnTasks =
                       filteredArchivedTasks.filter(
                         (task) =>
-                          task.status === column.status,
+                          task.status ===
+                          column.status,
                       );
 
                     return (
@@ -1534,7 +1798,10 @@ export default function Home() {
                 onClick={closeTaskModal}
                 aria-label="Close task form"
               >
-                <X size={20} aria-hidden="true" />
+                <X
+                  size={20}
+                  aria-hidden="true"
+                />
               </button>
             </header>
 
@@ -1569,7 +1836,8 @@ export default function Home() {
                   onChange={(event) =>
                     setDraftTask((currentTask) => ({
                       ...currentTask,
-                      description: event.target.value,
+                      description:
+                        event.target.value,
                     }))
                   }
                   rows={4}
