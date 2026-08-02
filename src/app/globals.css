@@ -1087,6 +1087,237 @@ html[data-theme="dark"] .overdue-label {
   border-top: 1px solid var(--border);
 }
 
+
+/* Task list table */
+
+.visually-hidden {
+  position: absolute;
+
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+
+  padding: 0;
+  margin: -1px;
+
+  border: 0;
+
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.task-table-container {
+  width: 100%;
+  overflow-x: auto;
+
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+}
+
+.task-table {
+  width: 100%;
+  min-width: 980px;
+
+  border-collapse: collapse;
+  background: var(--surface);
+}
+
+.task-table caption {
+  position: absolute;
+
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+
+  padding: 0;
+  margin: -1px;
+
+  border: 0;
+
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.task-table th,
+.task-table td {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-soft);
+
+  text-align: left;
+  vertical-align: middle;
+}
+
+.task-table thead th {
+  color: var(--text-muted);
+  background: var(--surface-secondary);
+
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.task-table thead th:first-child {
+  min-width: 270px;
+}
+
+.task-table tbody tr {
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.task-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.task-table tbody tr:last-child th,
+.task-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.task-table tbody th {
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+
+  padding: 4px 0;
+
+  color: inherit;
+  background: transparent;
+  border: 0;
+
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: inherit;
+  text-transform: inherit;
+
+  cursor: pointer;
+}
+
+.table-sort-button:hover {
+  color: var(--primary);
+}
+
+.table-sort-button small {
+  color: var(--primary);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.table-task-details {
+  display: grid;
+  gap: 5px;
+}
+
+.table-task-details strong {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.table-task-details p {
+  max-width: 38rem;
+
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.table-topic,
+.table-status,
+.task-table td > small {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.table-topic {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table-status {
+  padding: 6px 10px;
+  border-radius: 999px;
+
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.table-status svg {
+  width: 15px;
+  height: 15px;
+}
+
+.table-due-date {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.task-table td > small {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.table-task-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.table-task-actions .icon-button {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+}
+
+.task-table-row-overdue {
+  background: color-mix(
+    in srgb,
+    var(--danger-light) 58%,
+    var(--surface)
+  );
+}
+
+.task-table-row-overdue:hover {
+  background: color-mix(
+    in srgb,
+    var(--danger-light) 78%,
+    var(--surface)
+  );
+}
+
+.task-table-row-overdue > th:first-child {
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+
+html[data-theme="dark"] .task-table-row-overdue {
+  background: rgba(239, 68, 68, 0.07);
+}
+
+html[data-theme="dark"] .task-table-row-overdue:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
 /* Notification centre */
 
 .notification-centre {
@@ -1337,6 +1568,10 @@ html[data-theme="dark"] .notification-empty {
 }
 
 @media (max-width: 800px) {
+  .task-table-container {
+    margin-inline: -1px;
+  }
+
   .dashboard-shell {
     display: block;
   }
@@ -1402,6 +1637,15 @@ html[data-theme="dark"] .notification-empty {
 }
 
 @media (max-width: 620px) {
+  .task-table th,
+  .task-table td {
+    padding: 14px;
+  }
+
+  .task-table {
+    min-width: 900px;
+  }
+
   .topbar-avatar {
     display: none;
   }

@@ -32,9 +32,11 @@ import {
 import UsernameForm from "./components/UsernameForm";
 
 type Theme = "light" | "dark";
-type PageView = "dashboard" | "archive";
+type PageView = "dashboard" | "task-list" | "archive";
 type TaskStatus = "todo" | "progress" | "done";
 type TaskPriority = "Low" | "Medium" | "High";
+type TaskSortField = "topic" | "status" | "dueDate";
+type SortDirection = "ascending" | "descending";
 
 type Task = {
   id: string;
@@ -60,6 +62,12 @@ type DraftTask = {
 
 const dismissedNotificationsStorageKey =
   "dismissed-overdue-notifications";
+
+const taskStatusOrder: Record<TaskStatus, number> = {
+  todo: 0,
+  progress: 1,
+  done: 2,
+};
 
 const columns: {
   status: TaskStatus;
@@ -89,6 +97,12 @@ const navigationItems = [
     href: "#dashboard",
     icon: LayoutDashboard,
     view: "dashboard" as PageView,
+  },
+  {
+    label: "Task List",
+    href: "#task-list",
+    icon: ListTodo,
+    view: "task-list" as PageView,
   },
   {
     label: "Archive",
@@ -131,6 +145,18 @@ function formatArchivedDate(date: string): string {
     month: "short",
     year: "numeric",
   }).format(new Date(date));
+}
+
+function formatTaskStatus(status: TaskStatus): string {
+  if (status === "todo") {
+    return "To do";
+  }
+
+  if (status === "progress") {
+    return "In progress";
+  }
+
+  return "Completed";
 }
 
 function createInitials(username: string): string {
@@ -433,6 +459,12 @@ export default function Home() {
 
   const [searchTerm, setSearchTerm] = useState("");
 
+  const [taskSortField, setTaskSortField] =
+  useState<TaskSortField>("dueDate");
+
+ const [taskSortDirection, setTaskSortDirection] =
+  useState<SortDirection>("ascending");
+
   const [currentDate, setCurrentDate] =
     useState("Today");
 
@@ -726,6 +758,52 @@ export default function Home() {
     });
   }, [searchTerm, tasks]);
 
+  const sortedTasks = useMemo(() => {
+  const tasksToSort = [...filteredTasks];
+
+  tasksToSort.sort((firstTask, secondTask) => {
+    let comparison = 0;
+
+    if (taskSortField === "topic") {
+      comparison = firstTask.topic.localeCompare(
+        secondTask.topic,
+        "en",
+        {
+          sensitivity: "base",
+        },
+      );
+    }
+
+    if (taskSortField === "status") {
+      comparison =
+        taskStatusOrder[firstTask.status] -
+        taskStatusOrder[secondTask.status];
+    }
+
+    if (taskSortField === "dueDate") {
+      const firstDueDate = new Date(
+        `${firstTask.dueDate}T00:00:00`,
+      ).getTime();
+
+      const secondDueDate = new Date(
+        `${secondTask.dueDate}T00:00:00`,
+      ).getTime();
+
+      comparison = firstDueDate - secondDueDate;
+    }
+
+    return taskSortDirection === "ascending"
+      ? comparison
+      : -comparison;
+  });
+
+  return tasksToSort;
+}, [
+  filteredTasks,
+  taskSortDirection,
+  taskSortField,
+]);
+
   const filteredArchivedTasks = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
 
@@ -778,6 +856,24 @@ export default function Home() {
       : Math.round(
           (completedTasks / tasks.length) * 100,
         );
+
+
+  function changeTaskSort(
+  selectedField: TaskSortField,
+): void {
+  if (taskSortField === selectedField) {
+    setTaskSortDirection((currentDirection) =>
+      currentDirection === "ascending"
+        ? "descending"
+        : "ascending",
+    );
+
+    return;
+  }
+
+  setTaskSortField(selectedField);
+  setTaskSortDirection("ascending");
+}
 
   function toggleTheme(): void {
     const newTheme: Theme =
@@ -1219,9 +1315,9 @@ export default function Home() {
               <input
                 type="search"
                 placeholder={
-                  currentView === "dashboard"
-                    ? "Search tasks or topics"
-                    : "Search archived tasks"
+                  currentView === "archive"
+                    ? "Search archived tasks"
+                    : "Search tasks or topics"
                 }
                 value={searchTerm}
                 onChange={(event) =>
@@ -1642,6 +1738,343 @@ export default function Home() {
                   );
                 })}
               </section>
+            </section>
+          </section>
+        ) : currentView === "task-list" ? (
+          <section
+            className="content-container"
+            id="task-list"
+          >
+            <header className="welcome-section">
+              <section>
+                <p className="eyebrow">
+                  Task management
+                </p>
+
+                <h1>Task List</h1>
+
+                <p>
+                  View, search and organise all your
+                  active tasks in one place.
+                </p>
+              </section>
+
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => openTaskModal()}
+              >
+                <Plus
+                  size={19}
+                  aria-hidden="true"
+                />
+
+                New task
+              </button>
+            </header>
+
+            <section className="board-section">
+              <header className="board-header">
+                <section>
+                  <p className="eyebrow">
+                    All active tasks
+                  </p>
+
+                  <h2>Sortable task list</h2>
+
+                  <p>
+                    Sort your tasks by topic, status or
+                    due date.
+                  </p>
+                </section>
+
+                <small>
+                  {sortedTasks.length}{" "}
+                  {sortedTasks.length === 1
+                    ? "task"
+                    : "tasks"}{" "}
+                  shown
+                </small>
+              </header>
+
+              {sortedTasks.length > 0 ? (
+                <section
+                  className="task-table-container"
+                  aria-label="Active task list"
+                >
+                  <table className="task-table">
+                    <caption>
+                      All active tasks sorted by{" "}
+                      {taskSortField === "dueDate"
+                        ? "due date"
+                        : taskSortField}
+                      .
+                    </caption>
+
+                    <thead>
+                      <tr>
+                        <th scope="col">Task</th>
+
+                        <th
+                          scope="col"
+                          aria-sort={
+                            taskSortField === "topic"
+                              ? taskSortDirection
+                              : "none"
+                          }
+                        >
+                          <button
+                            className="table-sort-button"
+                            type="button"
+                            onClick={() =>
+                              changeTaskSort("topic")
+                            }
+                          >
+                            Topic
+
+                            <small aria-hidden="true">
+                              {taskSortField === "topic"
+                                ? taskSortDirection ===
+                                  "ascending"
+                                  ? "↑"
+                                  : "↓"
+                                : "↕"}
+                            </small>
+                          </button>
+                        </th>
+
+                        <th
+                          scope="col"
+                          aria-sort={
+                            taskSortField === "status"
+                              ? taskSortDirection
+                              : "none"
+                          }
+                        >
+                          <button
+                            className="table-sort-button"
+                            type="button"
+                            onClick={() =>
+                              changeTaskSort("status")
+                            }
+                          >
+                            Status
+
+                            <small aria-hidden="true">
+                              {taskSortField === "status"
+                                ? taskSortDirection ===
+                                  "ascending"
+                                  ? "↑"
+                                  : "↓"
+                                : "↕"}
+                            </small>
+                          </button>
+                        </th>
+
+                        <th
+                          scope="col"
+                          aria-sort={
+                            taskSortField === "dueDate"
+                              ? taskSortDirection
+                              : "none"
+                          }
+                        >
+                          <button
+                            className="table-sort-button"
+                            type="button"
+                            onClick={() =>
+                              changeTaskSort("dueDate")
+                            }
+                          >
+                            Due date
+
+                            <small aria-hidden="true">
+                              {taskSortField ===
+                              "dueDate"
+                                ? taskSortDirection ===
+                                  "ascending"
+                                  ? "↑"
+                                  : "↓"
+                                : "↕"}
+                            </small>
+                          </button>
+                        </th>
+
+                        <th scope="col">Priority</th>
+
+                        <th scope="col">Estimate</th>
+
+                        <th scope="col">
+                          <strong className="visually-hidden">
+                            Task actions
+                          </strong>
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {sortedTasks.map((task) => {
+                        const overdue =
+                          isTaskOverdue(task);
+
+                        return (
+                          <tr
+                            key={task.id}
+                            className={
+                              overdue
+                                ? "task-table-row-overdue"
+                                : undefined
+                            }
+                          >
+                            <th scope="row">
+                              <article className="table-task-details">
+                                <strong>
+                                  {task.title}
+                                </strong>
+
+                                <p>
+                                  {task.description}
+                                </p>
+                              </article>
+                            </th>
+
+                            <td>
+                              <small className="table-topic">
+                                <FolderKanban
+                                  size={15}
+                                  aria-hidden="true"
+                                />
+
+                                {task.topic}
+                              </small>
+                            </td>
+
+                            <td>
+                              <small
+                                className={`table-status status-${task.status}`}
+                              >
+                                <TaskStatusIcon
+                                  status={task.status}
+                                />
+
+                                {formatTaskStatus(
+                                  task.status,
+                                )}
+                              </small>
+                            </td>
+
+                            <td>
+                              <section className="table-due-date">
+                                <time
+                                  dateTime={task.dueDate}
+                                >
+                                  {formatDate(
+                                    task.dueDate,
+                                  )}
+                                </time>
+
+                                {overdue && (
+                                  <strong className="overdue-label">
+                                    Overdue
+                                  </strong>
+                                )}
+                              </section>
+                            </td>
+
+                            <td>
+                              <small
+                                className={`priority-badge priority-${task.priority.toLowerCase()}`}
+                              >
+                                {task.priority}
+                              </small>
+                            </td>
+
+                            <td>
+                              <small>
+                                <Clock
+                                  size={15}
+                                  aria-hidden="true"
+                                />
+
+                                {task.timeEstimate}
+                              </small>
+                            </td>
+
+                            <td>
+                              <menu className="table-task-actions">
+                                <li>
+                                  <button
+                                    className="icon-button"
+                                    type="button"
+                                    onClick={() =>
+                                      openEditTaskModal(
+                                        task,
+                                      )
+                                    }
+                                    aria-label={`Edit ${task.title}`}
+                                    title="Edit task"
+                                  >
+                                    <Pencil
+                                      size={17}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                </li>
+
+                                <li>
+                                  <button
+                                    className="icon-button"
+                                    type="button"
+                                    onClick={() => {
+                                      void archiveTask(
+                                        task.id,
+                                      );
+                                    }}
+                                    aria-label={`Archive ${task.title}`}
+                                    title="Archive task"
+                                  >
+                                    <Archive
+                                      size={17}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                </li>
+                              </menu>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </section>
+              ) : (
+                <article className="empty-column">
+                  <ListTodo
+                    size={28}
+                    aria-hidden="true"
+                  />
+
+                  <h3>No tasks found</h3>
+
+                  <p>
+                    No active tasks match your current
+                    search.
+                  </p>
+
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => openTaskModal()}
+                  >
+                    <Plus
+                      size={18}
+                      aria-hidden="true"
+                    />
+
+                    Add a task
+                  </button>
+                </article>
+              )}
             </section>
           </section>
         ) : (
