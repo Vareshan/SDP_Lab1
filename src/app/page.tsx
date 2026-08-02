@@ -18,7 +18,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Settings,
   Sun,
   X,
 } from "lucide-react";
@@ -1660,17 +1659,6 @@ function resetCalendarToToday(): void {
         </nav>
 
         <footer className="sidebar-footer">
-          <a
-            className="navigation-item"
-            href="#settings"
-          >
-            <Settings
-              size={20}
-              aria-hidden="true"
-            />
-
-            Settings
-          </a>
 
           <article className="sidebar-profile">
             <strong
