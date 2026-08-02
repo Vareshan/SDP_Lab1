@@ -6,6 +6,7 @@ import {
   Bell,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Circle,
   CircleDashed,
@@ -32,7 +33,7 @@ import {
 import UsernameForm from "./components/UsernameForm";
 
 type Theme = "light" | "dark";
-type PageView = "dashboard" | "task-list" | "archive";
+type PageView =  | "dashboard" | "task-list" | "calendar"| "archive";
 type TaskStatus = "todo" | "progress" | "done";
 type TaskPriority = "Low" | "Medium" | "High";
 type TaskSortField = "topic" | "status" | "dueDate";
@@ -43,6 +44,7 @@ type Task = {
   title: string;
   description: string;
   topic: string;
+  startDate: string | null;
   dueDate: string;
   timeEstimate: string;
   priority: TaskPriority;
@@ -54,6 +56,7 @@ type DraftTask = {
   title: string;
   description: string;
   topic: string;
+  startDate: string;
   dueDate: string;
   timeEstimate: string;
   priority: TaskPriority;
@@ -111,11 +114,11 @@ const navigationItems = [
     view: "archive" as PageView,
   },
   {
-    label: "Calendar",
-    href: "#calendar",
-    icon: CalendarDays,
-    view: null,
-  },
+  label: "Calendar",
+  href: "#calendar",
+  icon: CalendarDays,
+  view: "calendar" as PageView,
+},
 ];
 
 function createEmptyTask(
@@ -125,6 +128,7 @@ function createEmptyTask(
     title: "",
     description: "",
     topic: "Task Tracker",
+    startDate: "",
     dueDate: "",
     timeEstimate: "1h",
     priority: "Medium",
@@ -157,6 +161,86 @@ function formatTaskStatus(status: TaskStatus): string {
   }
 
   return "Completed";
+}
+
+function parseDateOnly(date: string): Date {
+  const [year, month, day] = date
+    .split("-")
+    .map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function formatDateInput(date: Date): string {
+  const year = date.getFullYear();
+
+  const month = String(
+    date.getMonth() + 1,
+  ).padStart(2, "0");
+
+  const day = String(date.getDate()).padStart(
+    2,
+    "0",
+  );
+
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date: Date, amount: number): Date {
+  const updatedDate = new Date(date);
+
+  updatedDate.setDate(
+    updatedDate.getDate() + amount,
+  );
+
+  return updatedDate;
+}
+
+function getStartOfWeek(date: Date): Date {
+  const weekStart = new Date(date);
+
+  weekStart.setHours(0, 0, 0, 0);
+
+  const currentDay = weekStart.getDay();
+
+  const daysFromMonday =
+    currentDay === 0 ? -6 : 1 - currentDay;
+
+  weekStart.setDate(
+    weekStart.getDate() + daysFromMonday,
+  );
+
+  return weekStart;
+}
+
+function getDayDifference(
+  startDate: string,
+  endDate: string,
+): number {
+  const [startYear, startMonth, startDay] = startDate
+    .split("-")
+    .map(Number);
+
+  const [endYear, endMonth, endDay] = endDate
+    .split("-")
+    .map(Number);
+
+  const startTime = Date.UTC(
+    startYear,
+    startMonth - 1,
+    startDay,
+  );
+
+  const endTime = Date.UTC(
+    endYear,
+    endMonth - 1,
+    endDay,
+  );
+
+  return Math.round(
+    (endTime - startTime) /
+      (1000 * 60 * 60 * 24),
+  );
 }
 
 function createInitials(username: string): string {
@@ -460,10 +544,15 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [taskSortField, setTaskSortField] =
-  useState<TaskSortField>("dueDate");
+    useState<TaskSortField>("dueDate");
 
- const [taskSortDirection, setTaskSortDirection] =
-  useState<SortDirection>("ascending");
+  const [taskSortDirection, setTaskSortDirection] =
+    useState<SortDirection>("ascending");
+
+  const [
+  calendarStartDate,
+  setCalendarStartDate,
+] = useState("");
 
   const [currentDate, setCurrentDate] =
     useState("Today");
@@ -720,7 +809,13 @@ export default function Home() {
     const now = new Date();
     const hour = now.getHours();
 
-    setCurrentDateISO(now.toISOString().split("T")[0]);
+    const todayISO = formatDateInput(now);
+
+setCurrentDateISO(todayISO);
+
+setCalendarStartDate(
+  formatDateInput(getStartOfWeek(now)),
+);
 
     setCurrentDate(
       new Intl.DateTimeFormat("en-ZA", {
@@ -759,50 +854,308 @@ export default function Home() {
   }, [searchTerm, tasks]);
 
   const sortedTasks = useMemo(() => {
-  const tasksToSort = [...filteredTasks];
+    const tasksToSort = [...filteredTasks];
 
-  tasksToSort.sort((firstTask, secondTask) => {
-    let comparison = 0;
+    tasksToSort.sort((firstTask, secondTask) => {
+      let comparison = 0;
 
-    if (taskSortField === "topic") {
-      comparison = firstTask.topic.localeCompare(
-        secondTask.topic,
+      if (taskSortField === "topic") {
+        comparison = firstTask.topic.localeCompare(
+          secondTask.topic,
+          "en",
+          {
+            sensitivity: "base",
+          },
+        );
+      }
+
+      if (taskSortField === "status") {
+        comparison =
+          taskStatusOrder[firstTask.status] -
+          taskStatusOrder[secondTask.status];
+      }
+
+      if (taskSortField === "dueDate") {
+        const firstDueDate = new Date(
+          `${firstTask.dueDate}T00:00:00`,
+        ).getTime();
+
+        const secondDueDate = new Date(
+          `${secondTask.dueDate}T00:00:00`,
+        ).getTime();
+
+        comparison = firstDueDate - secondDueDate;
+      }
+
+      return taskSortDirection === "ascending"
+        ? comparison
+        : -comparison;
+    });
+
+    return tasksToSort;
+  }, [
+    filteredTasks,
+    taskSortDirection,
+    taskSortField,
+  ]);
+
+  const calendarDays = useMemo(() => {
+    if (!calendarStartDate) {
+      return [];
+    }
+
+    const firstDate = parseDateOnly(
+      calendarStartDate,
+    );
+
+    return Array.from(
+      {
+        length: 30,
+      },
+      (_, index) => {
+        const date = addDays(firstDate, index);
+        const isoDate = formatDateInput(date);
+        const previousDate =
+          index === 0
+            ? null
+            : addDays(firstDate, index - 1);
+
+        const isMonthStart =
+          previousDate === null ||
+          previousDate.getMonth() !==
+            date.getMonth() ||
+          previousDate.getFullYear() !==
+            date.getFullYear();
+
+        const weekdayNumber = date.getDay();
+
+        return {
+          isoDate,
+
+          weekday: new Intl.DateTimeFormat(
+            "en-ZA",
+            {
+              weekday: "short",
+            },
+          ).format(date),
+
+          dayNumber: new Intl.DateTimeFormat(
+            "en-ZA",
+            {
+              day: "numeric",
+            },
+          ).format(date),
+
+          month: new Intl.DateTimeFormat(
+            "en-ZA",
+            {
+              month: "short",
+            },
+          ).format(date),
+
+          monthKey: `${date.getFullYear()}-${date.getMonth()}`,
+
+          monthLabel: new Intl.DateTimeFormat(
+            "en-ZA",
+            {
+              month: "long",
+              year: "numeric",
+            },
+          ).format(date),
+
+          fullLabel: new Intl.DateTimeFormat(
+            "en-ZA",
+            {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            },
+          ).format(date),
+
+          isToday: isoDate === currentDateISO,
+          isWeekend:
+            weekdayNumber === 0 ||
+            weekdayNumber === 6,
+          isMonthStart,
+        };
+      },
+    );
+  }, [calendarStartDate, currentDateISO]);
+
+  const calendarMonthSegments = useMemo(() => {
+    const segments: {
+      key: string;
+      label: string;
+      startIndex: number;
+      dayCount: number;
+    }[] = [];
+
+    calendarDays.forEach((day, index) => {
+      const currentSegment =
+        segments[segments.length - 1];
+
+      if (
+        currentSegment &&
+        currentSegment.key === day.monthKey
+      ) {
+        currentSegment.dayCount += 1;
+        return;
+      }
+
+      segments.push({
+        key: day.monthKey,
+        label: day.monthLabel,
+        startIndex: index,
+        dayCount: 1,
+      });
+    });
+
+    return segments;
+  }, [calendarDays]);
+
+const calendarRangeLabel = useMemo(() => {
+  if (calendarDays.length === 0) {
+    return "Calendar timeline";
+  }
+
+  const firstDay = parseDateOnly(
+    calendarDays[0].isoDate,
+  );
+
+  const lastDay = parseDateOnly(
+    calendarDays[calendarDays.length - 1].isoDate,
+  );
+
+  const rangeFormatter =
+    new Intl.DateTimeFormat("en-ZA", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+
+  return `${rangeFormatter.format(
+    firstDay,
+  )} – ${rangeFormatter.format(lastDay)}`;
+}, [calendarDays]);
+
+const calendarTasks = useMemo(() => {
+  if (calendarDays.length === 0) {
+    return [];
+  }
+
+  const firstVisibleDate =
+    calendarDays[0].isoDate;
+
+  const lastVisibleDate =
+    calendarDays[
+      calendarDays.length - 1
+    ].isoDate;
+
+  return filteredTasks
+    .filter((task) => {
+      const taskStartDate =
+        task.startDate ?? task.dueDate;
+
+      return (
+        task.dueDate >= firstVisibleDate &&
+        taskStartDate <= lastVisibleDate
+      );
+    })
+    .sort((firstTask, secondTask) => {
+      const topicComparison =
+        firstTask.topic.localeCompare(
+          secondTask.topic,
+          "en",
+          {
+            sensitivity: "base",
+          },
+        );
+
+      if (topicComparison !== 0) {
+        return topicComparison;
+      }
+
+      const firstStartDate =
+        firstTask.startDate ??
+        firstTask.dueDate;
+
+      const secondStartDate =
+        secondTask.startDate ??
+        secondTask.dueDate;
+
+      return firstStartDate.localeCompare(
+        secondStartDate,
+      );
+    })
+    .map((task) => {
+      const taskStartDate =
+        task.startDate ?? task.dueDate;
+
+      const visibleStartDate =
+        taskStartDate < firstVisibleDate
+          ? firstVisibleDate
+          : taskStartDate;
+
+      const visibleEndDate =
+        task.dueDate > lastVisibleDate
+          ? lastVisibleDate
+          : task.dueDate;
+
+      return {
+        task,
+
+        startIndex: getDayDifference(
+          firstVisibleDate,
+          visibleStartDate,
+        ),
+
+        endIndex: getDayDifference(
+          firstVisibleDate,
+          visibleEndDate,
+        ),
+
+        continuesBefore:
+          taskStartDate < firstVisibleDate,
+
+        continuesAfter:
+          task.dueDate > lastVisibleDate,
+      };
+    });
+}, [calendarDays, filteredTasks]);
+
+const calendarTaskGroups = useMemo(() => {
+  const groups = new Map<
+    string,
+    (typeof calendarTasks)[number][]
+  >();
+
+  calendarTasks.forEach((calendarTask) => {
+    const topic = calendarTask.task.topic.trim();
+
+    const existingTasks = groups.get(topic) ?? [];
+
+    groups.set(topic, [
+      ...existingTasks,
+      calendarTask,
+    ]);
+  });
+
+  return Array.from(groups.entries())
+    .sort(([firstTopic], [secondTopic]) =>
+      firstTopic.localeCompare(
+        secondTopic,
         "en",
         {
           sensitivity: "base",
         },
-      );
-    }
-
-    if (taskSortField === "status") {
-      comparison =
-        taskStatusOrder[firstTask.status] -
-        taskStatusOrder[secondTask.status];
-    }
-
-    if (taskSortField === "dueDate") {
-      const firstDueDate = new Date(
-        `${firstTask.dueDate}T00:00:00`,
-      ).getTime();
-
-      const secondDueDate = new Date(
-        `${secondTask.dueDate}T00:00:00`,
-      ).getTime();
-
-      comparison = firstDueDate - secondDueDate;
-    }
-
-    return taskSortDirection === "ascending"
-      ? comparison
-      : -comparison;
-  });
-
-  return tasksToSort;
-}, [
-  filteredTasks,
-  taskSortDirection,
-  taskSortField,
-]);
+      ),
+    )
+    .map(([topic, groupedTasks]) => ({
+      topic,
+      tasks: groupedTasks,
+    }));
+}, [calendarTasks]);
 
   const filteredArchivedTasks = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -859,20 +1212,49 @@ export default function Home() {
 
 
   function changeTaskSort(
-  selectedField: TaskSortField,
-): void {
-  if (taskSortField === selectedField) {
-    setTaskSortDirection((currentDirection) =>
-      currentDirection === "ascending"
-        ? "descending"
-        : "ascending",
-    );
+    selectedField: TaskSortField,
+  ): void {
+    if (taskSortField === selectedField) {
+      setTaskSortDirection((currentDirection) =>
+        currentDirection === "ascending"
+          ? "descending"
+          : "ascending",
+      );
 
+      return;
+    }
+
+    setTaskSortField(selectedField);
+    setTaskSortDirection("ascending");
+  }
+
+  function moveCalendar(
+  numberOfDays: number,
+): void {
+  if (!calendarStartDate) {
     return;
   }
 
-  setTaskSortField(selectedField);
-  setTaskSortDirection("ascending");
+  const currentStart = parseDateOnly(
+    calendarStartDate,
+  );
+
+  const updatedStart = addDays(
+    currentStart,
+    numberOfDays,
+  );
+
+  setCalendarStartDate(
+    formatDateInput(updatedStart),
+  );
+}
+
+function resetCalendarToToday(): void {
+  const today = new Date();
+
+  setCalendarStartDate(
+    formatDateInput(getStartOfWeek(today)),
+  );
 }
 
   function toggleTheme(): void {
@@ -904,6 +1286,7 @@ export default function Home() {
       title: task.title,
       description: task.description,
       topic: task.topic,
+      startDate: task.startDate ?? task.dueDate,
       dueDate: task.dueDate,
       timeEstimate: task.timeEstimate,
       priority: task.priority,
@@ -952,9 +1335,14 @@ export default function Home() {
       !draftTask.title.trim() ||
       !draftTask.description.trim() ||
       !draftTask.topic.trim() ||
+      !draftTask.startDate ||
       !draftTask.dueDate ||
       !draftTask.timeEstimate.trim()
     ) {
+      return;
+    }
+
+    if (draftTask.startDate > draftTask.dueDate) {
       return;
     }
 
@@ -962,6 +1350,7 @@ export default function Home() {
       title: draftTask.title.trim(),
       description: draftTask.description.trim(),
       topic: draftTask.topic.trim(),
+      startDate: draftTask.startDate,
       dueDate: draftTask.dueDate,
       timeEstimate:
         draftTask.timeEstimate.trim(),
@@ -1314,11 +1703,14 @@ export default function Home() {
 
               <input
                 type="search"
-                placeholder={
-                  currentView === "archive"
-                    ? "Search archived tasks"
-                    : "Search tasks or topics"
-                }
+                 placeholder={
+  currentView === "archive"
+    ? "Search archived tasks"
+    : currentView === "calendar"
+      ? "Search calendar tasks"
+      : "Search tasks or topics"
+}
+                
                 value={searchTerm}
                 onChange={(event) =>
                   setSearchTerm(event.target.value)
@@ -2077,6 +2469,389 @@ export default function Home() {
               )}
             </section>
           </section>
+                ) : currentView === "calendar" ? (
+          <section
+            className="content-container"
+            id="calendar"
+          >
+            <header className="welcome-section">
+              <section>
+                <p className="eyebrow">
+                  Project planning
+                </p>
+
+                <h1>Calendar</h1>
+
+                <p>
+                  View your tasks across a horizontal
+                  daily timeline.
+                </p>
+              </section>
+
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => openTaskModal()}
+              >
+                <Plus
+                  size={19}
+                  aria-hidden="true"
+                />
+
+                New task
+              </button>
+            </header>
+
+            <section className="board-section">
+              <header className="board-header">
+                <section>
+                  <p className="eyebrow">
+                    Thirty-day view
+                  </p>
+
+                  <h2>{calendarRangeLabel}</h2>
+
+                  <p>
+                    Move through the timeline one week
+                    at a time.
+                  </p>
+                </section>
+
+                <section className="calendar-header-actions">
+                  <small className="calendar-visible-count">
+                    {calendarTasks.length}{" "}
+                    {calendarTasks.length === 1
+                      ? "task"
+                      : "tasks"}{" "}
+                    across {calendarTaskGroups.length}{" "}
+                    {calendarTaskGroups.length === 1
+                      ? "topic"
+                      : "topics"}
+                  </small>
+
+                  <menu className="calendar-navigation">
+                    <li>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => moveCalendar(-7)}
+                      >
+                        <ChevronLeft
+                          size={18}
+                          aria-hidden="true"
+                        />
+
+                        Previous
+                      </button>
+                    </li>
+
+                    <li>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={resetCalendarToToday}
+                      >
+                        Today
+                      </button>
+                    </li>
+
+                    <li>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => moveCalendar(7)}
+                      >
+                        Next
+
+                        <ChevronRight
+                          size={18}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </li>
+                  </menu>
+                </section>
+              </header>
+
+              <section
+                className="calendar-legend"
+                aria-label="Calendar status legend"
+              >
+                <strong>Legend</strong>
+
+                <ul>
+                  <li>
+                    <i
+                      className="calendar-legend-marker calendar-legend-todo"
+                      aria-hidden="true"
+                    />
+                    To do
+                  </li>
+
+                  <li>
+                    <i
+                      className="calendar-legend-marker calendar-legend-progress"
+                      aria-hidden="true"
+                    />
+                    In progress
+                  </li>
+
+                  <li>
+                    <i
+                      className="calendar-legend-marker calendar-legend-done"
+                      aria-hidden="true"
+                    />
+                    Completed
+                  </li>
+
+                  <li>
+                    <i
+                      className="calendar-legend-marker calendar-legend-overdue"
+                      aria-hidden="true"
+                    />
+                    Overdue
+                  </li>
+                </ul>
+              </section>
+
+              <section
+                className="calendar-timeline"
+                aria-label="Thirty-day task timeline"
+              >
+                <header className="calendar-month-row">
+                  <strong className="calendar-month-heading">
+                    Month
+                  </strong>
+
+                  {calendarMonthSegments.map(
+                    (segment) => (
+                      <strong
+                        className="calendar-month-segment"
+                        style={{
+                          gridColumn: `${
+                            segment.startIndex + 2
+                          } / span ${segment.dayCount}`,
+                        }}
+                        key={segment.key}
+                      >
+                        {segment.label}
+                      </strong>
+                    ),
+                  )}
+                </header>
+
+                <header className="calendar-date-row">
+                  <strong className="calendar-task-heading">
+                    Task
+                  </strong>
+
+                  {calendarDays.map((day) => (
+                    <time
+                      className={`calendar-day-heading ${
+                        day.isToday
+                          ? "calendar-day-today"
+                          : ""
+                      } ${
+                        day.isWeekend
+                          ? "calendar-day-weekend"
+                          : ""
+                      } ${
+                        day.isMonthStart
+                          ? "calendar-day-month-start"
+                          : ""
+                      }`}
+                      dateTime={day.isoDate}
+                      title={day.fullLabel}
+                      key={day.isoDate}
+                    >
+                      <small>{day.weekday}</small>
+
+                      <strong>
+                        {day.dayNumber}
+                      </strong>
+
+                      <small>{day.month}</small>
+                    </time>
+                  ))}
+                </header>
+
+
+                {calendarTasks.length > 0 ? (
+                  <ol
+                    className="calendar-topic-list"
+                    aria-label="Tasks grouped by topic"
+                  >
+                    {calendarTaskGroups.map((group) => (
+                      <li key={group.topic}>
+                        <article className="calendar-topic-group">
+                          <header className="calendar-topic-header">
+                            <section className="calendar-topic-name">
+                              <FolderKanban
+                                size={17}
+                                aria-hidden="true"
+                              />
+
+                              <strong>{group.topic}</strong>
+
+                              <small>
+                                {group.tasks.length}{" "}
+                                {group.tasks.length === 1
+                                  ? "task"
+                                  : "tasks"}
+                              </small>
+                            </section>
+
+                            <small className="calendar-topic-summary">
+                              Project timeline
+                            </small>
+                          </header>
+
+                          <ol className="calendar-task-list">
+                            {group.tasks.map(
+                              ({
+                                task,
+                                startIndex,
+                                endIndex,
+                                continuesBefore,
+                                continuesAfter,
+                              }) => {
+                                const taskStartDate =
+                                  task.startDate ??
+                                  task.dueDate;
+
+                                const overdue =
+                                  isTaskOverdue(task);
+
+                                return (
+                                  <li key={task.id}>
+                                    <article className="calendar-task-row">
+                                      <header className="calendar-task-label">
+                                        <strong>
+                                          {task.title}
+                                        </strong>
+
+                                        <small>
+                                          {formatDate(
+                                            taskStartDate,
+                                          )}{" "}
+                                          –{" "}
+                                          {formatDate(
+                                            task.dueDate,
+                                          )}
+                                        </small>
+                                      </header>
+
+                                      {calendarDays.map(
+                                        (day, index) => (
+                                          <i
+                                            className={`calendar-grid-cell ${
+                                              day.isToday
+                                                ? "calendar-grid-cell-today"
+                                                : ""
+                                            } ${
+                                              day.isWeekend
+                                                ? "calendar-grid-cell-weekend"
+                                                : ""
+                                            } ${
+                                              day.isMonthStart
+                                                ? "calendar-grid-cell-month-start"
+                                                : ""
+                                            }`}
+                                            style={{
+                                              gridColumn:
+                                                index + 2,
+                                            }}
+                                            aria-hidden="true"
+                                            key={day.isoDate}
+                                          />
+                                        ),
+                                      )}
+
+                                      <button
+                                        className={`calendar-task-bar calendar-task-bar-${task.status} ${
+                                          overdue
+                                            ? "calendar-task-bar-overdue"
+                                            : ""
+                                        } ${
+                                          continuesBefore
+                                            ? "calendar-task-bar-continues-before"
+                                            : ""
+                                        } ${
+                                          continuesAfter
+                                            ? "calendar-task-bar-continues-after"
+                                            : ""
+                                        }`}
+                                        style={{
+                                          gridColumn: `${
+                                            startIndex + 2
+                                          } / ${
+                                            endIndex + 3
+                                          }`,
+                                        }}
+                                        type="button"
+                                        onClick={() =>
+                                          openEditTaskModal(
+                                            task,
+                                          )
+                                        }
+                                        aria-label={`Edit ${task.title}. Runs from ${taskStartDate} to ${task.dueDate}.`}
+                                        title={`${task.title}: ${formatDate(
+                                          taskStartDate,
+                                        )} to ${formatDate(
+                                          task.dueDate,
+                                        )}`}
+                                      >
+                                        <strong>
+                                          {task.title}
+                                        </strong>
+
+                                        <small>
+                                          {formatTaskStatus(
+                                            task.status,
+                                          )}
+                                        </small>
+                                      </button>
+                                    </article>
+                                  </li>
+                                );
+                              },
+                            )}
+                          </ol>
+                        </article>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <article className="calendar-empty-state">
+                    <CalendarDays
+                      size={28}
+                      aria-hidden="true"
+                    />
+
+                    <h3>No tasks in this period</h3>
+
+                    <p>
+                      Move to another week or create a
+                      task with dates inside this period.
+                    </p>
+
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => openTaskModal()}
+                    >
+                      <Plus
+                        size={18}
+                        aria-hidden="true"
+                      />
+
+                      Add a task
+                    </button>
+                  </article>
+                )}
+              </section>
+            </section>
+          </section>
         ) : (
           <section
             className="content-container"
@@ -2342,11 +3117,29 @@ export default function Home() {
               </label>
 
               <label className="form-field">
+                Start date
+
+                <input
+                  type="date"
+                  value={draftTask.startDate}
+                  max={draftTask.dueDate || undefined}
+                  onChange={(event) =>
+                    setDraftTask((currentTask) => ({
+                      ...currentTask,
+                      startDate: event.target.value,
+                    }))
+                  }
+                  required
+                />
+              </label>
+
+              <label className="form-field">
                 Due date
 
                 <input
                   type="date"
                   value={draftTask.dueDate}
+                  min={draftTask.startDate || undefined}
                   onChange={(event) =>
                     setDraftTask((currentTask) => ({
                       ...currentTask,

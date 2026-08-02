@@ -1,18 +1,32 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 
-const taskPriorities = ["Low", "Medium", "High"] as const;
-const taskStatuses = ["todo", "progress", "done"] as const;
+const taskPriorities = [
+  "Low",
+  "Medium",
+  "High",
+] as const;
 
-type TaskPriorityValue = (typeof taskPriorities)[number];
-type TaskStatusValue = (typeof taskStatuses)[number];
+const taskStatuses = [
+  "todo",
+  "progress",
+  "done",
+] as const;
+
+type TaskPriorityValue =
+  (typeof taskPriorities)[number];
+
+type TaskStatusValue =
+  (typeof taskStatuses)[number];
 
 function isTaskPriority(
   value: unknown,
 ): value is TaskPriorityValue {
   return (
     typeof value === "string" &&
-    taskPriorities.includes(value as TaskPriorityValue)
+    taskPriorities.includes(
+      value as TaskPriorityValue,
+    )
   );
 }
 
@@ -21,8 +35,25 @@ function isTaskStatus(
 ): value is TaskStatusValue {
   return (
     typeof value === "string" &&
-    taskStatuses.includes(value as TaskStatusValue)
+    taskStatuses.includes(
+      value as TaskStatusValue,
+    )
   );
+}
+
+function isValidDateString(
+  value: unknown,
+): value is string {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return false;
+  }
+
+  const parsedDate = new Date(`${value}T00:00:00`);
+
+  return !Number.isNaN(parsedDate.getTime());
 }
 
 export async function GET() {
@@ -37,7 +68,8 @@ export async function GET() {
       return NextResponse.json(
         {
           tasks: [],
-          error: "The local user has not been created.",
+          error:
+            "The local user has not been created.",
         },
         { status: 404 },
       );
@@ -60,7 +92,10 @@ export async function GET() {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Failed to retrieve tasks:", error);
+    console.error(
+      "Failed to retrieve tasks:",
+      error,
+    );
 
     return NextResponse.json(
       {
@@ -84,7 +119,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json(
         {
-          error: "The local user has not been created.",
+          error:
+            "The local user has not been created.",
         },
         { status: 404 },
       );
@@ -94,6 +130,7 @@ export async function POST(request: Request) {
       title?: unknown;
       description?: unknown;
       topic?: unknown;
+      startDate?: unknown;
       dueDate?: unknown;
       timeEstimate?: unknown;
       priority?: unknown;
@@ -118,7 +155,8 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
-          error: "A task description is required.",
+          error:
+            "A task description is required.",
         },
         { status: 400 },
       );
@@ -136,13 +174,31 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      typeof body.dueDate !== "string" ||
-      body.dueDate.trim().length === 0
-    ) {
+    if (!isValidDateString(body.startDate)) {
       return NextResponse.json(
         {
-          error: "A due date is required.",
+          error:
+            "A valid task start date is required.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!isValidDateString(body.dueDate)) {
+      return NextResponse.json(
+        {
+          error:
+            "A valid task due date is required.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (body.startDate > body.dueDate) {
+      return NextResponse.json(
+        {
+          error:
+            "The start date cannot be after the due date.",
         },
         { status: 400 },
       );
@@ -154,7 +210,8 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
-          error: "A time estimate is required.",
+          error:
+            "A time estimate is required.",
         },
         { status: 400 },
       );
@@ -163,7 +220,8 @@ export async function POST(request: Request) {
     if (!isTaskPriority(body.priority)) {
       return NextResponse.json(
         {
-          error: "The task priority is invalid.",
+          error:
+            "The task priority is invalid.",
         },
         { status: 400 },
       );
@@ -172,7 +230,8 @@ export async function POST(request: Request) {
     if (!isTaskStatus(body.status)) {
       return NextResponse.json(
         {
-          error: "The task status is invalid.",
+          error:
+            "The task status is invalid.",
         },
         { status: 400 },
       );
@@ -181,10 +240,13 @@ export async function POST(request: Request) {
     const task = await prisma.task.create({
       data: {
         title: body.title.trim(),
-        description: body.description.trim(),
+        description:
+          body.description.trim(),
         topic: body.topic.trim(),
-        dueDate: body.dueDate.trim(),
-        timeEstimate: body.timeEstimate.trim(),
+        startDate: body.startDate,
+        dueDate: body.dueDate,
+        timeEstimate:
+          body.timeEstimate.trim(),
         priority: body.priority,
         status: body.status,
         userId: user.id,
@@ -193,13 +255,17 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        message: "Task created successfully.",
+        message:
+          "Task created successfully.",
         task,
       },
       { status: 201 },
     );
   } catch (error) {
-    console.error("Failed to create task:", error);
+    console.error(
+      "Failed to create task:",
+      error,
+    );
 
     return NextResponse.json(
       {
