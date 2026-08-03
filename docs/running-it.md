@@ -218,3 +218,5 @@ npm install
 npm run build
 npm start
 ```
+## AI Declaration
+-The preceding document was generated with: OpenAI[ChatGPT-5.6 Sol]
