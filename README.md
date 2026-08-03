@@ -3,7 +3,8 @@
 
 First run:
 1) npx prisma validate
-2) npx prisma generate
+2) npx prisma db push
+3) npx prisma generate
 
 Then run the development server:
 
