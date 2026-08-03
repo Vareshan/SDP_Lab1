@@ -1,5 +1,14 @@
 Welcome to TaskFlow, a webapp designed to help you keep up to date with tasks.
 
+## Required Software
+The application requires Node.js version 24
+Check versions:
+```bash
+node --version
+npm --version
+```
+npm is usually installed together with Node.js
+
 ## Getting Started
 
 First:
