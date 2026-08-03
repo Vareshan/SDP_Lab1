@@ -159,4 +159,4 @@ npm run db:setup
 ```
 
 ## AI Declaration
--The preceding document was generated with: OpenAI[ChatGPT-5.6 Sol]
+-The preceding document was generated with: ChatGPT-Web[GPT-5.6 Sol (High)]
