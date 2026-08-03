@@ -2,13 +2,15 @@ Welcome to TaskFlow, a webapp designed to help you keep up to date with tasks.
 
 ## Getting Started
 
-First run:
+First:
+```bash
+git clone https://github.com/Vareshan/SDP_Lab1.git
+```
+Then run:
 ```bash
 npm install
 ```
-
-Then run the development server:
-
+And now run the development server:
 ```bash
 npm run dev
 ```
