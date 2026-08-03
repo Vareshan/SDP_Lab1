@@ -26,6 +26,7 @@ Run all tests with:
 
 ```bash
 npm test
+```
 
 
 
