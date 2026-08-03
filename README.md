@@ -15,6 +15,7 @@ npm is usually installed together with Node.js
 First:
 ```bash
 git clone https://github.com/Vareshan/SDP_Lab1.git
+cd SDP_Lab1
 ```
 Then run:
 ```bash
