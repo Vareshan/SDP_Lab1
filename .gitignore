@@ -46,4 +46,10 @@ next-env.d.ts
 /test.db-shm
 /test.db-wal
 
+# Local SQLite database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
 /src/generated/prisma
