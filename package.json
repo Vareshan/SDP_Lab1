@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "test": "node scripts/run-tests.mjs",
+    "db:setup": "prisma db push && prisma generate",
+    "predev": "npm run db:setup",
+    "prebuild": "npm run db:setup",
     "lint": "eslint"
   },
   "dependencies": {
