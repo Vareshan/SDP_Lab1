@@ -695,34 +695,47 @@ export default function Home() {
   }, [isCheckingUser, username]);
 
   useEffect(() => {
-    try {
-      const savedDismissedIds = localStorage.getItem(
-        dismissedNotificationsStorageKey,
-      );
+  const animationFrameId =
+    window.requestAnimationFrame(() => {
+      try {
+        const savedDismissedIds =
+          localStorage.getItem(
+            dismissedNotificationsStorageKey,
+          );
 
-      if (!savedDismissedIds) {
-        return;
+        if (!savedDismissedIds) {
+          return;
+        }
+
+        const parsedIds = JSON.parse(
+          savedDismissedIds,
+        ) as unknown;
+
+        if (
+          Array.isArray(parsedIds) &&
+          parsedIds.every(
+            (taskId) =>
+              typeof taskId === "string",
+          )
+        ) {
+          setDismissedNotificationIds(
+            parsedIds,
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load dismissed notifications:",
+          error,
+        );
       }
+    });
 
-      const parsedIds = JSON.parse(
-        savedDismissedIds,
-      ) as unknown;
-
-      if (
-        Array.isArray(parsedIds) &&
-        parsedIds.every(
-          (taskId) => typeof taskId === "string",
-        )
-      ) {
-        setDismissedNotificationIds(parsedIds);
-      }
-    } catch (error) {
-      console.error(
-        "Failed to load dismissed notifications:",
-        error,
-      );
-    }
-  }, []);
+  return () => {
+    window.cancelAnimationFrame(
+      animationFrameId,
+    );
+  };
+}, []);
 
   useEffect(() => {
     if (
@@ -788,50 +801,66 @@ export default function Home() {
   }, [currentView, isCheckingUser, username]);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem(
-      "task-tracker-theme",
-    ) as Theme | null;
+  const animationFrameId =
+    window.requestAnimationFrame(() => {
+      const savedTheme = localStorage.getItem(
+        "task-tracker-theme",
+      );
 
-    const systemTheme: Theme = window.matchMedia(
-      "(prefers-color-scheme: dark)",
-    ).matches
-      ? "dark"
-      : "light";
+      const systemTheme: Theme =
+        window.matchMedia(
+          "(prefers-color-scheme: dark)",
+        ).matches
+          ? "dark"
+          : "light";
 
-    const selectedTheme = savedTheme ?? systemTheme;
+      const selectedTheme: Theme =
+        savedTheme === "light" ||
+        savedTheme === "dark"
+          ? savedTheme
+          : systemTheme;
 
-    setTheme(selectedTheme);
+      setTheme(selectedTheme);
 
-    document.documentElement.dataset.theme =
-      selectedTheme;
+      document.documentElement.dataset.theme =
+        selectedTheme;
 
-    const now = new Date();
-    const hour = now.getHours();
+      const now = new Date();
+      const hour = now.getHours();
 
-    const todayISO = formatDateInput(now);
+      const todayISO = formatDateInput(now);
 
-setCurrentDateISO(todayISO);
+      setCurrentDateISO(todayISO);
 
-setCalendarStartDate(
-  formatDateInput(getStartOfWeek(now)),
-);
+      setCalendarStartDate(
+        formatDateInput(
+          getStartOfWeek(now),
+        ),
+      );
 
-    setCurrentDate(
-      new Intl.DateTimeFormat("en-ZA", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      }).format(now),
+      setCurrentDate(
+        new Intl.DateTimeFormat("en-ZA", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        }).format(now),
+      );
+
+      if (hour < 12) {
+        setGreeting("Good morning");
+      } else if (hour < 18) {
+        setGreeting("Good afternoon");
+      } else {
+        setGreeting("Good evening");
+      }
+    });
+
+  return () => {
+    window.cancelAnimationFrame(
+      animationFrameId,
     );
-
-    if (hour < 12) {
-      setGreeting("Good morning");
-    } else if (hour < 18) {
-      setGreeting("Good afternoon");
-    } else {
-      setGreeting("Good evening");
-    }
-  }, []);
+  };
+}, []);
 
   const filteredTasks = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
