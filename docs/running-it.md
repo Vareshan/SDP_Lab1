@@ -25,10 +25,8 @@ git --version
 ### 1. Clone the repository
 
 ```bash
-git clone <REPOSITORY_URL>
+git clone https://github.com/Vareshan/SDP_Lab1.git
 ```
-
-Replace `<REPOSITORY_URL>` with the GitHub URL of the TaskFlow repository.
 
 ### 2. Enter the repository
 
