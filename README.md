@@ -1,15 +1,17 @@
+Welcome to TaskFlow, a webapp designed to help you keep up to date with tasks.
 
 ## Getting Started
 
 First run:
-1) npx prisma validate
-2) npx prisma db push
-3) npx prisma generate
+```bash
+npm install
+```
 
 Then run the development server:
 
 ```bash
 npm run dev
+```
 
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
@@ -21,11 +23,6 @@ The repository contains integration tests for creating,
 editing and archiving tasks.
 
 Run all tests with:
-
-Install the project dependencies:
-
-```bash
-npm install
 
 ```bash
 npm test
