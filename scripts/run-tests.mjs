@@ -14,10 +14,12 @@ const projectRoot = path.resolve(
 
 const testDatabasePath = path.join(
   projectRoot,
+  "prisma",
   "test.db",
 );
 
-const testDatabaseUrl = "file:./test.db";
+const testDatabaseUrl =
+  "file:./prisma/test.db";
 
 const npxCommand =
   process.platform === "win32"
@@ -53,8 +55,6 @@ function runCommand(argumentsList) {
       cwd: projectRoot,
       env: testEnvironment,
       stdio: "inherit",
-
-      // Required when executing npx.cmd on Windows.
       shell: process.platform === "win32",
     },
   );
@@ -66,6 +66,15 @@ function runCommand(argumentsList) {
   return result.status ?? 1;
 }
 
+function ensureCommandSucceeded(
+  exitCode,
+  errorMessage,
+) {
+  if (exitCode !== 0) {
+    throw new Error(errorMessage);
+  }
+}
+
 let exitCode = 1;
 
 try {
@@ -75,19 +84,26 @@ try {
 
   removeTestDatabase();
 
+  const generateExitCode = runCommand([
+    "prisma",
+    "generate",
+  ]);
+
+  ensureCommandSucceeded(
+    generateExitCode,
+    "Prisma Client could not be generated.",
+  );
+
   const databaseExitCode = runCommand([
     "prisma",
     "db",
     "push",
-    "--url",
-    testDatabaseUrl,
   ]);
 
-  if (databaseExitCode !== 0) {
-    throw new Error(
-      "The temporary test database could not be created.",
-    );
-  }
+  ensureCommandSucceeded(
+    databaseExitCode,
+    "The temporary test database could not be created.",
+  );
 
   console.log("\nRunning tests...\n");
 
